@@ -415,7 +415,8 @@ void ParametricGraph3D(double (*parfun[]) (double, double), double it, double ft
         if((fabs(parfun[2](m[z[i].num].x, m[z[i].num].y)) < 5) &&
            !(mode && LineSightControlAxes(v, parfun[0](m[z[i].num].x, m[z[i].num].y),
                     parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)))) {
-            Init(u, parfun[0](m[z[i].num].x, m[z[i].num].y),  parfun[1](m[z[i].num].x, m[z[i].num].y),  parfun[2](m[z[i].num].x, m[z[i].num].y));
+            Init(u, parfun[0](m[z[i].num].x, m[z[i].num].y),
+                 parfun[1](m[z[i].num].x, m[z[i].num].y),  parfun[2](m[z[i].num].x, m[z[i].num].y));
             Projection(&pts[0],u);
             Init(w, parfun[0](m[z[i].num].x + dt, m[z[i].num].y),
                   parfun[1](m[z[i].num].x + dt, m[z[i].num].y),  parfun[2](m[z[i].num].x + dt, m[z[i].num].y));
