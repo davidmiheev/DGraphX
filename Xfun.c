@@ -296,8 +296,8 @@ void SetFont(const char* name) {
     key = 1;
 }
 
-void SetLineWidth(int width) {
-    val . line_width = width;
+void SetLineWidth(int line_width) {
+    val . line_width = line_width;
     XChangeGC(prDisplay, prGC, GCLineWidth, &val);
 }
 
