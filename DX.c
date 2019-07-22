@@ -3,14 +3,12 @@
 // David Mikheev 7/18/19
 
 #include "DGraphX.h"
-//#include "Interp3D.h"
 #include "matrix.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#define m(i,j) V[3*i+j]
+
 #define n(i,j) N[3*i+j]
-#define t(i,j) T[3*i+j]
 
 #define ALPHA 64.
 #define THETA 45.
@@ -31,6 +29,8 @@
 double xc, yc;
 
 static double M[9];
+
+static double view[3];
 
 Point map(int x, int y) {
     Point P; double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
@@ -144,7 +144,7 @@ void DrawLineX(Point * pts, XPoint *pt) {
     invmapX(pts, pt, 2);
     WDrawLine(pt[0].x, pt[0].y, pt[1].x, pt[1].y);
 }
-
+//============ colors (to improve) ==========
 void pallette(unsigned long* cx) {
     unsigned long tmpx;
     for (int i = 0; i < 100; i++) {
@@ -157,8 +157,8 @@ void gradient( double x, double y, unsigned long color, double (*z[]) (double,do
     double t = 0.5 + atan(0.9 * z[i](x,y))/PI;
      WSetColor(t*color/* + ((1-t)*color2)*/);//cx[(int)(t*100)]
 }
-
-void Rotation(int Axis, double angle, int mode) {
+//=============================
+void elemRotation(int Axis, double angle, int mode) {
     double N[9];
     MatrixId(N);
     switch (Axis) {
@@ -184,25 +184,25 @@ void Rotation(int Axis, double angle, int mode) {
 }
 
 void RotateX(int mode) {
-    Rotation(X,K*DPHI,mode);
+    elemRotation(X,K*DPHI,mode);
 }
 
 void RotateY(int mode) {
-    Rotation(Y,K*DPHI,mode);
+    elemRotation(Y,K*DPHI,mode);
 }
 
 void RotateZ(int mode) {
-    Rotation(Z,K*DPHI,mode);
+    elemRotation(Z,K*DPHI,mode);
 }
 
 void IdMatrix() {
     MatrixId(M);
 }
 
-void Projection(Point *p, double* v) {
-    MxV(M,v);
-    p->x = v[0]*20./(20-v[1]);
-    p->y = v[2]*20./(20-v[1]);
+void Projection(Point *p, double* pt) {
+    MxV(M, pt);
+    p->x = pt[0]*20./(20 - pt[1]);
+    p->y = pt[2]*20./(20 - pt[1]);
 }
 
 Point ObliqueProjection ( /*PointR3 p*/ double x, double y, double z ) {
@@ -213,8 +213,8 @@ Point ObliqueProjection ( /*PointR3 p*/ double x, double y, double z ) {
 }
 
 void OrthoProjection () {
-    Rotation(X,K*PHI,CCW);
-    Rotation(Z,K*THETA,CW);
+    elemRotation(X,K*PHI,CCW);
+    elemRotation(Z,K*THETA,CW);
 }
 
 void DrawAxes() {
@@ -261,60 +261,61 @@ void DrawAxes() {
     WDrawString ("Z", invmap(p1.x,p1.y).x, invmap(p1.x,p1.y).y);
 }
 
-void VectorSight(double* v) {
-    double N[9],T[9];
-    Init(v,0,1,0);
-    InitM(T,M);
-    InvMatrix(3,T,N);
-    MxV(N,v); //printf("(%f,%f,%f)\n", v[0],v[1],v[2]);
+void VectorSight() {
+    double N[9], T[9];
+    Init(view, 0, 1, 0);
+    InitM(T, M);
+    InvMatrix(3, T, N);
+    MxV(N, view); //printf("(%f,%f,%f)\n", v[0],v[1],v[2]);
 }
 
-int LineSightControlAxes(double* v,double x, double y, double z) { // to improve
-    double tmp[3]; InitV(tmp,v); v[0] = (20*v[0] - x)/20.; v[1] = (20*v[1] - y)/20.; v[2] = (20*v[2] - z)/20.;
-    if((fabs(y*v[2]-z*v[1]) < 0.03 && y/v[1] < 0 && fabs(x-(y/v[1])*v[0]) < 5) ||
-       (fabs(x*v[2]-z*v[0]) < 0.03 && z/v[2] < 0 && fabs(y-(z/v[2])*v[1]) < 5) ||
-       (fabs(x*v[1]-y*v[0]) < 0.03 && x/v[0] < 0 && fabs(z-(x/v[0])*v[2]) < 5)) {
-       InitV(v,tmp);
+int LineSightControlAxes(double x, double y, double z) {
+    double tmp[3]; InitV(tmp, view); view[0] = (20*view[0] - x)/20.; view[1] = (20*view[1] - y)/20.;
+    view[2] = (20*view[2] - z)/20.;
+    if((fabs(y*view[2]-z*view[1]) < 0.03 && y/view[1] < 0 && fabs(x-(y/view[1])*view[0]) < 5) ||
+       (fabs(x*view[2]-z*view[0]) < 0.03 && z/view[2] < 0 && fabs(y-(z/view[2])*view[1]) < 5) ||
+       (fabs(x*view[1]-y*view[0]) < 0.03 && x/view[0] < 0 && fabs(z-(x/view[0])*view[2]) < 5)) {
+       InitV(view, tmp);
         return 1;
-    } InitV(v,tmp);
+    } InitV(view, tmp);
     return 0;
 }
 
 void elemDraw(double x, double y, double (*z[]) (double, double), double dx, double dy, int i,
               double *u, double *w, Point *pts, XPoint *pt) {
-    Init(u,x,y,z[i](x,y)); Init(w,x+dx,y,z[i](x+dx,y));
+    Init(u, x, y, z[i](x,y)); Init(w, x+dx, y, z[i](x+dx,y));
     Projection(&pts[0],u); Projection(&pts[1],w);
-    Init(u,x,y+dy,z[i](x,y+dy)); Init(w,x+dx,y+dy,z[i](x+dx,y+dy));
-    Projection(&pts[3],u); Projection(&pts[2],w);
-    gradient(x+dx/2.,y+dy/2., BLUE , z, i);
+    Init(u, x, y + dy, z[i](x, y + dy)); Init(w, x+dx, y+dy, z[i](x + dx, y + dy));
+    Projection(&pts[3], u); Projection(&pts[2], w);
+    gradient(x+dx/2., y+dy/2., BLUE , z, i);
     invmapX(pts, pt, 4); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
     WFillPolygon (pt, 4);
 }
 
 int comp (const void *i, const void *j)
 {
-    if(((const Pair*) i)->z > ((const Pair*) j)->z) return 1;
+    if(((const Pair*) i) -> z > ((const Pair*) j) -> z) return 1;
     else return -1;
 }
     
 void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, int n) {
-    double dx = 5*(1e-2), dy = 5*(1e-2), v[3]; Pair m[32]; 
+    double dx = 5*(1e-2), dy = 5*(1e-2); Pair m[32];
     double u[3],w[3]; Point pts[4]; XPoint pt[4];
-    VectorSight(v); WSetColor(BLUE);
-        if( 20.*v[1] - (a + b)/2. > 1e-20 && fabs(20.*v[1] - (a + b)/2.) > fabs(20.*v[0] - (a + b)/2.)) {
+    VectorSight(); WSetColor(BLUE);
+        if( 20.*view[1] - (a + b)/2. > 1e-20 && fabs(20.*view[1] - (a + b)/2.) > fabs(20.*view[0] - (a + b)/2.)) {
             for (double y = a; y < b + 1e-2; y+=dy) {
                 for (double x = a; x < b + 1e-2; x+=dx) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
-                        if(v[2] > 1e-20) {
+                        if(view[2] > 1e-20) {
                             if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[i].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
                                 elemDraw(x, y, z, dx, dy, m[i].num, u, w , pts, pt);
                             }
                         } else {
                             if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[n-i-1].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
                                 elemDraw(x, y, z, dx, dy, m[n-i-1].num, u, w , pts, pt);
                             }
                         }
@@ -322,20 +323,20 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, 
                 }
             }
         }
-        if( 20.*v[1] - (a + b)/2.< 1e-20 && fabs(20.*v[1] - (a + b)/2.) > fabs(20.*v[0] - (a + b)/2.)) {
+        if( 20.*view[1] - (a + b)/2.< 1e-20 && fabs(20.*view[1] - (a + b)/2.) > fabs(20.*view[0] - (a + b)/2.)) {
             for (double y = b; y > a - 1e-2; y -= dy) {
                 for (double x = a; x < b + 1e-2; x += dx) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
-                        if(v[2] > 1e-20) {
+                        if(view[2] > 1e-20) {
                             if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[i].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
                                 elemDraw(x, y, z, dx, -dy, m[i].num, u, w , pts, pt);
                             }
                         } else {
                             if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[n-i-1].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
                                 elemDraw(x, y, z, dx, -dy, m[n-i-1].num, u, w , pts, pt);
                             }
                         }
@@ -343,20 +344,20 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, 
                 }
             }
         }
-        if( 20.*v[0] - (a + b)/2. > 1e-20 && fabs(20.*v[1] - (a + b)/2.) < fabs(20.*v[0] - (a + b)/2.)) {
+        if( 20.*view[0] - (a + b)/2. > 1e-20 && fabs(20.*view[1] - (a + b)/2.) < fabs(20.*view[0] - (a + b)/2.)) {
             for (double x = a; x < b + 1e-2; x+=dx) {
                 for (double y = a; y < b + 1e-2; y+=dy) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
-                        if(v[2] > 1e-20) {
+                        if(view[2] > 1e-20) {
                             if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[i].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
                                 elemDraw(x, y, z, dx, dy, m[i].num, u, w , pts, pt);
                             }
                         } else {
                             if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[n-i-1].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
                                 elemDraw(x, y, z, dx, dy, m[n-i-1].num, u, w , pts, pt);
                             }
                         }
@@ -364,20 +365,20 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, 
                 }
             }
         }
-        if( 20.*v[0] - (a + b)/2. < 1e-20 && fabs(20.*v[1] - (a + b)/2.) < fabs(20.*v[0] - (a + b)/2.)) {
+        if( 20.*view[0] - (a + b)/2. < 1e-20 && fabs(20.*view[1] - (a + b)/2.) < fabs(20.*view[0] - (a + b)/2.)) {
             for (double x = b; x > a - 1e-2; x-=dx) {
                 for (double y = a; y < b + 1e-2; y+=dy) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
-                        if(v[2] > 1e-20) {
+                        if(view[2] > 1e-20) {
                             if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[i].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
                                 elemDraw(x, y, z, -dx, dy, m[i].num, u, w , pts, pt);
                             }
                         } else {
                             if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(v, x, y, z[m[n-i-1].num](x, y)))) {
+                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
                                 elemDraw(x, y, z, -dx, dy, m[n-i-1].num, u, w , pts, pt);
                             }
                         }
@@ -388,45 +389,46 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, 
 }
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode) {
-    double dt = 1e-4; double u[3],w[3],v[3]; Point pts[2]; XPoint pt[2];
-    VectorSight(v);
+    double dt = 1e-4; double u[3],w[3]; Point pts[2]; XPoint pt[2];
+    VectorSight();
     WSetColor(RED); SetLineWidth(3);
     for(double t = it; t < s; t += dt) {
-        if(!(mode && LineSightControlAxes(v, curvefun[0](t),curvefun[1](t),curvefun[2](t)))) {
-            Init(u,curvefun[0](t),curvefun[1](t),curvefun[2](t)); Init(w,curvefun[0](t+dt),curvefun[1](t+dt),curvefun[2](t+dt));
-            Projection(&pts[0],u); Projection(&pts[1],w);
-            DrawLineX(pts,pt);
+        if(!(mode && LineSightControlAxes(curvefun[0](t), curvefun[1](t), curvefun[2](t)))) {
+            Init(u, curvefun[0](t), curvefun[1](t), curvefun[2](t));
+            Init(w, curvefun[0](t+dt), curvefun[1](t+dt), curvefun[2](t+dt));
+            Projection(&pts[0], u); Projection(&pts[1], w);
+            DrawLineX(pts, pt);
         }
     }
 }
 
 void ParametricGraph3D(double (*parfun[]) (double, double), double it, double ft, double is, double fs, int mode) {
-    double dt = 5e-2, ds = 5e-2; double u[3],w[3],v[3],tmpx[3]; Point pts[4], m[0x8000]; XPoint pt[4]; Pair z[0x8000]; int j = 0;
-    VectorSight(v);
+    double dt = 5e-2, ds = 5e-2; double u[3],w[3],tmpx[3]; Point pts[4], m[0x8000]; XPoint pt[4]; Pair z[0x8000];
+    int j = 0;
+    VectorSight();
     WSetColor(BLUE);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {
             m[j].x = t; m[j].y = s;
-            Init(tmpx, 20*v[0] - parfun[0](t,s), 20*v[1] - parfun[1](t,s), 20*v[2] - parfun[2](t,s));
+            Init(tmpx, 20*view[0] - parfun[0](t,s), 20*view[1] - parfun[1](t,s), 20*view[2] - parfun[2](t,s));
             z[j].z = inner(tmpx, tmpx, 3); z[j].num = j; j++;
         }
     } qsort(z, j, sizeof(*z), &comp);
     for (int i = j - 1; i >= 0; i--) {
         if((fabs(parfun[2](m[z[i].num].x, m[z[i].num].y)) < 5) &&
-           !(mode && LineSightControlAxes(v, parfun[0](m[z[i].num].x, m[z[i].num].y),
+           !(mode && LineSightControlAxes(parfun[0](m[z[i].num].x, m[z[i].num].y),
                     parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)))) {
-            Init(u, parfun[0](m[z[i].num].x, m[z[i].num].y),
-                 parfun[1](m[z[i].num].x, m[z[i].num].y),  parfun[2](m[z[i].num].x, m[z[i].num].y));
-            Projection(&pts[0],u);
+            Init(u, parfun[0](m[z[i].num].x, m[z[i].num].y),  parfun[1](m[z[i].num].x, m[z[i].num].y),  parfun[2](m[z[i].num].x, m[z[i].num].y));
+            Projection(&pts[0], u);
             Init(w, parfun[0](m[z[i].num].x + dt, m[z[i].num].y),
                   parfun[1](m[z[i].num].x + dt, m[z[i].num].y),  parfun[2](m[z[i].num].x + dt, m[z[i].num].y));
-            Projection(&pts[1],w);
+            Projection(&pts[1], w);
             Init(u, parfun[0](m[z[i].num].x, m[z[i].num].y + ds),
                   parfun[1](m[z[i].num].x, m[z[i].num].y + ds),  parfun[2](m[z[i].num].x, m[z[i].num].y + ds));
-            Projection(&pts[3],u);
+            Projection(&pts[3], u);
             Init(w, parfun[0](m[z[i].num].x + dt, m[z[i].num].y + ds),
                   parfun[1](m[z[i].num].x + dt, m[z[i].num].y + ds),  parfun[2](m[z[i].num].x + dt, m[z[i].num].y + ds));
-            Projection(&pts[2],w);
+            Projection(&pts[2], w);
             WSetColor((0.5 + atan(0.9 * parfun[2](m[z[i].num].x, m[z[i].num].y))/PI)*BLUE);
             invmapX(pts, pt, 4);
             WFillPolygon (pt, 4);

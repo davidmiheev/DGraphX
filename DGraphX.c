@@ -109,7 +109,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
         WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
         WSetColor(LIGHTGREEN);
         for(int i = 0; i < 9; i++) DrawArc( 193 + 3*i, 170, 50 + i*(20 + 2*i), 50 + i*(20 + 2*i), 0, 360*64 );
-        WDrawString("This is 2D mode", 100, 500);  SetFont(HELVETICA12);
+        WDrawString("This is 2D mode", 100, 500);
+        SetFont(HELVETICA12);
         WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw interpolation with Hermite polynomial; ' 2 ' -- draw interpolation with spline", 100, 525);
         WDrawString("' 3 ' -- draw graph; ' 4 ' -- draw parametric curve (x(t), y(t))", 100, 550);
         xc = (xmax - xmin)/width;
@@ -460,23 +461,23 @@ int main (void) {
     if (ret_code)
     {
         switch (ret_code) {
-            case PLOT_X11_ERR_1:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_1);
+            case X11_ERR_1:
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_1);
                 break;
-            case PLOT_X11_ERR_2:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_2);
+            case X11_ERR_2:
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_2);
                 break;
-            case PLOT_X11_ERR_3:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_3);
+            case X11_ERR_3:
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_3);
                 break;
-            case PLOT_X11_ERR_4:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_4);
+            case X11_ERR_4:
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_4);
                 break;
-            case PLOT_X11_ERR_5:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_5);
+            case X11_ERR_5:
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_5);
                 break;
             default:
-                printf ("[DGraphX]:%s\n", PLOT_X11_ERR_MSG_DEF);
+                printf ("[DGraphX]: %s\n", X11_ERR_MSG_DEF);
                 break;
         }
         return ret_code;

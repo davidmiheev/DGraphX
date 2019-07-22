@@ -55,8 +55,8 @@ typedef struct {
 
 //======= Global data =========
 extern COLORS rColors;
-extern int width;//nWWidth;
-extern int height;//nWHeight;
+extern int width;
+extern int height;
 extern double xc, yc;
 extern double xmin, xmax, ymin, ymax;
 //=============================
@@ -132,17 +132,19 @@ void IdMatrix();
 
 int WGetColor (unsigned int Red, unsigned int Green, unsigned int Blue, unsigned long *pColor);
 
-#define PLOT_X11_ERR_1	1
-#define PLOT_X11_ERR_2	2
-#define PLOT_X11_ERR_3	3
-#define PLOT_X11_ERR_4	4
-#define PLOT_X11_ERR_5	5
+#define X11_ERR_1	1
+#define X11_ERR_2	2
+#define X11_ERR_3	3
+#define X11_ERR_4	4
+#define X11_ERR_5	5
 
-#define PLOT_X11_ERR_MSG_1	"Cannot connect to the X server"
-#define PLOT_X11_ERR_MSG_2	"Not enough memory to create X Windows data structures"
-#define PLOT_X11_ERR_MSG_3	"Cannot allocate enough colors in the X Windows pallete"
-#define PLOT_X11_ERR_MSG_4	"Cannot allocate enough X bitmaps"
-#define PLOT_X11_ERR_MSG_5	"Bad Window"
-#define PLOT_X11_ERR_MSG_DEF	"Unknown error in an X Windows interface code"
+
+#define X11_ERR_MSG_1	"Cannot connect to the X server :("
+#define X11_ERR_MSG_2	"Not enough memory to create X Windows data structures :("
+#define X11_ERR_MSG_3	"Cannot allocate enough colors in the X Windows pallete :("
+#define X11_ERR_MSG_4	"Cannot allocate enough X bitmaps :("
+#define X11_ERR_MSG_5  "Bad Window :("
+
+#define X11_ERR_MSG_DEF	"Unknown error in an X Windows interface code :("
 
 #endif

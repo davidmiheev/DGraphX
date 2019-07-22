@@ -68,7 +68,6 @@ static int AllocColors (Display * prDisplay, Colormap colormap, COLORS * colors)
   colors->blue = rColor.pixel;
    
   if (!XAllocNamedColor (prDisplay, colormap, "green", &rColor, &rColorBase)) return 3;
-    
   colors->green = rColor.pixel;
 
   if (!XAllocNamedColor (prDisplay, colormap, "cyan", &rColor, &rColorBase)) return 4;
@@ -115,8 +114,6 @@ static Window nWnd;
 static Drawable draw;
 static Font font;
 static XGCValues val;
-static int key = 0;
-unsigned long tmp;
 COLORS rColors;
 
 int width = WND_WDT;
@@ -130,7 +127,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
   int nDepth;
   
   if ((prDisplay = XOpenDisplay (NULL)) == NULL)
-    return PLOT_X11_ERR_1;
+    return X11_ERR_1;
   
   nScreenNum = DefaultScreen (prDisplay);
 
@@ -141,27 +138,27 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
 
   if (SetWindowManagerHints (prDisplay, PRG_CLASS, nWnd,
 			     WND_MIN_WDT, WND_MIN_HGT, WND_TITLE, WND_ICON_TITLE, 0))
-    return PLOT_X11_ERR_2;
+    return X11_ERR_2;
   
   XSelectInput (prDisplay, nWnd, ExposureMask | KeyPressMask);
 
   XMapWindow (prDisplay, nWnd);
     
-  prGC = XCreateGC (prDisplay, nWnd, GCLineWidth, &val);
+    prGC = XCreateGC (prDisplay, nWnd, GCLineWidth, &val); font = val.font;
     
   if (AllocColors(prDisplay, DefaultColormap (prDisplay, nScreenNum), &rColors))
-    return PLOT_X11_ERR_3;
+    return X11_ERR_3;
 
   if (XGetWindowAttributes (prDisplay, nWnd, &rAttributes)) {
       width = rAttributes.width;
       height = rAttributes.height;
       nDepth = rAttributes.depth;
-    } else return PLOT_X11_ERR_5;
+    } else return X11_ERR_5;
 
   draw = XCreatePixmap (prDisplay, nWnd, width, height, nDepth);
     
   if (!draw)
-    return PLOT_X11_ERR_4;
+    return X11_ERR_4;
     
   //=========== XLoop ==============
   FOREVER {
@@ -182,9 +179,9 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
                       height = rAttributes.height;
                       nDepth = rAttributes.depth;
                       draw = XCreatePixmap (prDisplay, nWnd, width, height, nDepth);
-                      if (!draw) return PLOT_X11_ERR_4;
+                      if (!draw) return X11_ERR_4;
                   }
-              } else return PLOT_X11_ERR_5;
+              } else return X11_ERR_5;
 
               DrawWindowContent (x,n,a,b);
               XCopyArea (prDisplay, draw, nWnd, prGC, 0, 0, width, height, 0, 0);
@@ -205,7 +202,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
                   default:
                   case KEY_PRESS_QUIT:
                       XFreePixmap (prDisplay, draw);
-                      if(key != 0) XUnloadFont(prDisplay,font);
+                      XUnloadFont(prDisplay, font);
                       XFreeGC (prDisplay, prGC);
                       XCloseDisplay (prDisplay);
                       return 0;
@@ -213,11 +210,11 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
               break;
       } //while (XCheckMaskEvent(prDisplay, KeyPressMask | KeyReleaseMask, &rEvent));
     }
-   //=====================================
+   //======================================
     
   return 0;
 }
-//============================
+//=========================================
 
 //========== XInstruments =================
 void WSetColor (unsigned long color) {
@@ -290,10 +287,19 @@ void DrawPoint(int x, int y, int d) {
 }
 
 void SetFont(const char* name) {
-    if(key != 0) XUnloadFont(prDisplay, font);
-    font = XLoadFont(prDisplay,name);
-    XSetFont(prDisplay,prGC,font);
-    key = 1;
+    XFontStruct *fs; char **defname; int count;
+    fs = XLoadQueryFont(prDisplay, name);
+    if (fs == NULL) {
+        printf("[DGraphX]: One of default fonts not found :(\n");
+        defname = XListFonts(prDisplay,"-adobe-*-*-*-*-*-*-*-*-*-*-*-*-*", 1, &count);
+        if(count == 1) {
+        font = XLoadFont(prDisplay, defname[0]);
+        XSetFont(prDisplay,prGC,font);
+        }
+    } else {
+        font = fs -> fid;
+        XSetFont(prDisplay,prGC,font);
+    }
 }
 
 void SetLineWidth(int line_width) {
