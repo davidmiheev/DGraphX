@@ -101,11 +101,13 @@ void DrawGraph2D(double f(double), double a, double b);
 
 void DrawParametric2D(double (*parf[]) (double), double it, double ft);
 
-void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, int n);
+void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long, unsigned long,
+                  int mode, int n);
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode);
 
-void ParametricGraph3D(double (*parfun[]) (double, double), double, double, double, double, int);
+void ParametricGraph3D(double (*parfun[]) (double, double),
+                       unsigned long, unsigned long, double, double, double, double, int);
 
 void SetLineWidth(int);
 
@@ -130,7 +132,8 @@ void RotateY(int mode);
 void RotateZ(int mode);
 void IdMatrix();
 
-int WGetColor (unsigned int Red, unsigned int Green, unsigned int Blue, unsigned long *pColor);
+int WGetColor (unsigned int, unsigned int, unsigned int, unsigned long*);
+void QueryColor(XColor *color);
 
 #define X11_ERR_1	1
 #define X11_ERR_2	2

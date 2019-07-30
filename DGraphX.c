@@ -95,9 +95,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     
     char s[128],str[128];
     int j; double tmp;
-    double *m, stp, (*fun[NMAX])(double, double), *r, (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
-    double X[NMAX],Y[NMAX];
-    //unsigned long color[NMAX];
+    double *m, stp, (*fun[NMAX])(double, double), (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
+    //unsigned long color[NMAX];//double X[NMAX],Y[NMAX];
     double dx = EPS;
     
     SetFont(HELVETICA16);
@@ -294,15 +293,13 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             } if(key_5 == 1) DrawAxes();
             if(key_4 == 1 && *n < NMAX) { (*n)++ ; key_4 = 0; }
             if(key_4 == -1 && *n > 6) { (*n)--; key_4 = 0; }
-            r = (double*)malloc(16*(*n-1)*(*n-1)*sizeof(double));
-            X[0] = a; Y[0] = a;
-            fun[1] = u; fun[0] = w; fun[2] = z;
+            
+            fun[0] = u; fun[1] = w; fun[2] = z;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
-            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, key_5, 1);
+            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, 1);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -3, 3, key_5);
-            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, -2.5, 2.5, -2.5, 2.5, key_5);
-           free(r);
+            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, -2.5, 2.5, -2.5, 2.5, key_5);
         }
     }
 }

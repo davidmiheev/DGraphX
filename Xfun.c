@@ -23,9 +23,9 @@
 #define WND_ICON_TITLE  "DGraphX"
 #define PRG_CLASS       "Grapher"
 
-static int SetWindowManagerHints ( Display * prDisplay,
+static int SetWindowManagerHints ( Display * display,
 		       const char *psPrgClass,	
-		       Window nWnd,	
+		       Window wnd,
 		       int nMinWidth,	
 		       int nMinHeight,	
 		       const char *psTitle,	
@@ -52,7 +52,7 @@ static int SetWindowManagerHints ( Display * prDisplay,
   rClassHint.res_name = 0;
   rClassHint.res_class = (char*) psPrgClass;
 
-  XSetWMProperties (prDisplay, nWnd, &prWindowName, &prIconName, 0, 0, &rSizeHints, &rWMHints, &rClassHint);
+  XSetWMProperties (display, wnd, &prWindowName, &prIconName, 0, 0, &rSizeHints, &rWMHints, &rClassHint);
 
   return 0;
 }
@@ -258,17 +258,21 @@ void WSetFillStyle (int Style) {
   XSetFillStyle (prDisplay, prGC, Style);
 }
 
-int WGetColor (unsigned int Red, unsigned int Green, unsigned int Blue, unsigned long *pColor) {
-  XColor rColor;
+int WGetColor (unsigned int red, unsigned int green, unsigned int blue, unsigned long *myColor) {
+  XColor Color;
+    
+  Color.red = red;
+  Color.green = green;
+  Color.blue = blue;
 
-  rColor.red = Red << 8;
-  rColor.green = Green << 8;
-  rColor.blue = Blue << 8;
-  rColor.flags = DoRed | DoGreen | DoBlue;
-
-  if (XAllocColor (prDisplay, DefaultColormap (prDisplay, nScreenNum), &rColor) == 0)	return 1;
-  *pColor = rColor.pixel;
+  if (XAllocColor(prDisplay, DefaultColormap (prDisplay, nScreenNum), &Color) == 0) return 1;
+  *myColor = Color.pixel;
+    
   return 0;
+}
+
+void QueryColor(XColor *color) {
+    XQueryColor(prDisplay, DefaultColormap (prDisplay, nScreenNum), color);
 }
 
 void WSetTitle (const char *s) {

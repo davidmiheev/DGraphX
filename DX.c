@@ -32,6 +32,8 @@ static double M[9];
 
 static double view[3];
 
+static unsigned long cx[128];
+
 Point map(int x, int y) {
     Point P; double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
     P.x = (x - width * kx) * xc;
@@ -145,17 +147,19 @@ void DrawLineX(Point * pts, XPoint *pt) {
     WDrawLine(pt[0].x, pt[0].y, pt[1].x, pt[1].y);
 }
 //============ colors (to improve) ==========
-void pallette(unsigned long* cx) {
+void pallette(unsigned long firstColor, unsigned long secondColor) {
     unsigned long tmpx;
+    XColor fc, sc;
+    fc.pixel = firstColor;
+    QueryColor(&fc);
+    sc.pixel = secondColor;
+    QueryColor(&sc);
     for (int i = 0; i < 100; i++) {
-       WGetColor(0,(i/100.)*65535, (1-i/100.)*65535, &tmpx);
+       WGetColor(fc.red + (sc.red - fc.red)*i/100,
+                 fc.green + (sc.green - fc.green)*i/100,
+                 fc.blue + (sc.blue - fc.blue)*i/100, &tmpx);
        cx[i] = tmpx;
     }
-}
-
-void gradient( double x, double y, unsigned long color, double (*z[]) (double,double), int i) {
-    double t = 0.5 + atan(0.9 * z[i](x,y))/PI;
-     WSetColor(t*color/* + ((1-t)*color2)*/);//cx[(int)(t*100)]
 }
 //=============================
 void elemRotation(int Axis, double angle, int mode) {
@@ -287,7 +291,8 @@ void elemDraw(double x, double y, double (*z[]) (double, double), double dx, dou
     Projection(&pts[0],u); Projection(&pts[1],w);
     Init(u, x, y + dy, z[i](x, y + dy)); Init(w, x+dx, y+dy, z[i](x + dx, y + dy));
     Projection(&pts[3], u); Projection(&pts[2], w);
-    gradient(x+dx/2., y+dy/2., BLUE , z, i);
+    //gradient(x+dx/2., y+dy/2., BLUE , z, i);
+    WSetColor(cx[(int)((0.5 + atan(0.9 * z[i](x+dx/2., y+dy/2.))/PI)*100)]);
     invmapX(pts, pt, 4); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
     WFillPolygon (pt, 4);
 }
@@ -298,10 +303,12 @@ int comp (const void *i, const void *j)
     else return -1;
 }
     
-void DrawGraph3DX(double a, double b, double (*z[]) (double, double), int mode, int n) {
+void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long firstColor,
+                  unsigned long secondColor, int mode, int n) {
     double dx = 5*(1e-2), dy = 5*(1e-2); Pair m[32];
     double u[3],w[3]; Point pts[4]; XPoint pt[4];
-    VectorSight(); WSetColor(BLUE);
+    pallette(firstColor, secondColor);
+    VectorSight();
         if( 20.*view[1] - (a + b)/2. > 1e-20 && fabs(20.*view[1] - (a + b)/2.) > fabs(20.*view[0] - (a + b)/2.)) {
             for (double y = a; y < b + 1e-2; y+=dy) {
                 for (double x = a; x < b + 1e-2; x+=dx) {
@@ -402,11 +409,13 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
     }
 }
 
-void ParametricGraph3D(double (*parfun[]) (double, double), double it, double ft, double is, double fs, int mode) {
-    double dt = 5e-2, ds = 5e-2; double u[3],w[3],tmpx[3]; Point pts[4], m[0x8000]; XPoint pt[4]; Pair z[0x8000];
+void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
+                       double it, double ft, double is, double fs, int mode) {
+    double dt = 5e-2, ds = 5e-2; double u[3],w[3],tmpx[3];
+    Point pts[4], m[0x8000]; XPoint pt[4]; Pair z[0x8000];
     int j = 0;
     VectorSight();
-    WSetColor(BLUE);
+    pallette(firstColor, secondColor);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {
             m[j].x = t; m[j].y = s;
@@ -429,7 +438,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), double it, double ft
             Init(w, parfun[0](m[z[i].num].x + dt, m[z[i].num].y + ds),
                   parfun[1](m[z[i].num].x + dt, m[z[i].num].y + ds),  parfun[2](m[z[i].num].x + dt, m[z[i].num].y + ds));
             Projection(&pts[2], w);
-            WSetColor((0.5 + atan(0.9 * parfun[2](m[z[i].num].x, m[z[i].num].y))/PI)*BLUE);
+            WSetColor(cx[(int)((0.5 + atan(0.9 * parfun[2](m[z[i].num].x, m[z[i].num].y))/PI)*100)]);
             invmapX(pts, pt, 4);
             WFillPolygon (pt, 4);
         }
