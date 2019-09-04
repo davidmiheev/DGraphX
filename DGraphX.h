@@ -102,12 +102,12 @@ void DrawGraph2D(double f(double), double a, double b);
 void DrawParametric2D(double (*parf[]) (double), double it, double ft);
 
 void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long, unsigned long,
-                  int mode, int n);
+                  int, int, int);
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode);
 
 void ParametricGraph3D(double (*parfun[]) (double, double),
-                       unsigned long, unsigned long, double, double, double, double, int);
+                       unsigned long, unsigned long, double, double, double, double, int, int);
 
 void SetLineWidth(int);
 
@@ -125,8 +125,11 @@ XPoint invmap(double x, double y);
 
 Point map(int x, int y);
 Point ObliqueProjection ( double x, double y, double z );
+void ChangeCameraPosition(double valueOfShift);
+void SetShadingColor(unsigned long color);
 
-void OrthoProjection ();
+void VectorLight(double x, double y, double z);
+void InitialPosition ();
 void RotateX(int mode);
 void RotateY(int mode);
 void RotateZ(int mode);

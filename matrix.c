@@ -139,6 +139,17 @@ void Init(double *v, double x, double y, double z) {
 }
 
 void MatrixId ( double *N ) {
-    for (int i =0; i<9; i++) N[i] = 0.;
+    for (int i = 0; i < 9; i++) N[i] = 0.;
     n(0,0) = 1; n(1,1) = 1; n(2,2) = 1;
+}
+
+void cross(double* a, double* b, double *c) {
+     Init(c, (-1)*(a[1]*b[2] - a[2]*b[1]), (-1)*(a[2]*b[0] - a[0]*b[2]), (-1)*(a[0]*b[1] - a[1]*b[0]));
+}
+
+void normalize(double* a, int n) {
+    double l = sqrt(inner(a,a,n));
+    for (int i = 0; i < n; i++) {
+        a[i] /= l;
+    }
 }

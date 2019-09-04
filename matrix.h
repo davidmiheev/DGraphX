@@ -16,3 +16,7 @@ void Init(double *v, double x, double y, double z);
 void MatrixId ( double *N );
 
 double inner(double *v, double* u, int n);
+
+void cross(double* a, double* b, double *c);
+
+void normalize(double *a, int n);
