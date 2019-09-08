@@ -37,6 +37,12 @@ static int count1 = 0;
 
 double xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
 
+double mypow(double x, int n) {
+    double res = 1.;
+    for (int i = 0; i < n; i++) res *= x;
+    return res;
+}
+
 // ================ functions for drawing (input data) ===================
 
 double f(double x) { // function for draw by DrawGraph2D
@@ -68,15 +74,15 @@ double z(double x, double y) { // function for DrawGraph3DX
 }
 
 double curvex(double t) { // x-component for ParametricCurve3D
-    return t*sin(5*t);
+    return /*t*sin(5*t)*/20*mypow(cos(t),2);
 }
 
 double curvey(double t) { // y-component for ParametricCurve3D
-    return t*cos(5*t);
+    return /*t*cos(5*t)*/(10./2.)*sin(t);
 }
 
 double curvez(double t) { // z-component for ParametricCurve3D
-    return t;
+    return /*t*/10*sin(2*t);
 }
 double parx(double t, double s) { // x-component for ParametricGraph3D
     return /*3*cos(t)*cos(s)//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)*/ (3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t);
@@ -303,8 +309,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             fun[0] = u; fun[1] = w; fun[2] = z;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
-            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 3);
-            if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -3, 3, key_5);
+            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
+            if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
             if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ -PI, PI, 0, 2*PI, key_5, key_8);
         }
     }

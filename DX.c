@@ -23,6 +23,8 @@
 #define CCW 1
 #define K  0.01745329251
 #define PI 3.14159265358
+#define EPS_X 5e-2
+#define EPS_Y 5e-2
 
 //#define min(a,b) fabs(a) < fabs(b) ? fabs(a) : fabs(b)
 
@@ -47,6 +49,12 @@ static double nearY, farY;
 static double tmp[3];
 
 static unsigned long SHADINGCOLOR;
+
+static Point pt[4];
+
+static XPoint xpt[4];
+
+static int key = 0;
 
 Point map(int x, int y) {
     Point P; double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
@@ -101,8 +109,13 @@ void yshift(int mode, double valueOfShift) {
     }
 }
 
+void InitCameraPosition(double pos) {
+    cameraPos = pos;
+}
+
 void ChangeCameraPosition(double valueOfShift) {
     cameraPos += valueOfShift;
+    key = 1;
 }
 
 void SetShadingColor(unsigned long color) {
@@ -228,8 +241,8 @@ void IdMatrix() {
 void Projection(Point *p, double x, double y, double z) {
     Init(tmp, x, y, z);
     MxV(M, tmp);
-    p->x = tmp[0]*(nearY - farY)/(cameraPos - tmp[1]);
-    p->y = tmp[2]*(nearY - farY)/(cameraPos - tmp[1]);
+    p->x = 2*tmp[0]*(nearY - farY)/(cameraPos - tmp[1]);
+    p->y = 2*tmp[2]*(nearY - farY)/(cameraPos - tmp[1]);
 }
 
 Point ObliqueProjection ( /*PointR3 p*/ double x, double y, double z ) {
@@ -291,7 +304,7 @@ void VectorSight() {
     Init(view, 0, 1, 0);
     InitM(T, M);
     InvMatrix(3, T, N);
-    MxV(N, view); //printf("(%f,%f,%f)\n", v[0],v[1],v[2]);
+    MxV(N, view); //printf("(%f,%f,%f)\n", view[0],view[1],view[2]);
 }
 
 void VectorLight(double x, double y, double z) {
@@ -316,34 +329,36 @@ int LineSightControlAxes(double x, double y, double z) {
     return 0;
 }
 
-void elemDraw(double x, double y, double (*z[]) (double, double), double dx, double dy, int i,
-              double *u, double *w, Point *pts, XPoint *pt, int modeColor) {
-    Projection(&pts[0], x, y, z[i](x, y));
-    Projection(&pts[1], x + dx, y, z[i](x + dx, y));
-    Projection(&pts[2], x, y + dy, z[i](x, y + dy));
-    if(modeColor == 0)  WSetColor(cx[(int)((0.5 + atan(COEF * z[i](x+dx/2., y+dy/2.))/PI)*100)]);
+void elemDraw(double x, double y, double (*z[]) (double, double), int i, double *u, double *w, int modeColor) {
+    Init(tmp, x, y, z[i](x,y)); MxV(M, tmp);
+    if(cameraPos - tmp[1] > 5e-1) {
+    Projection(&pt[0], x, y, z[i](x, y));
+    Projection(&pt[1], x + EPS_X, y, z[i](x + EPS_X, y));
+    if(EPS_X*EPS_Y > 1e-2) Projection(&pt[2], x, y + EPS_Y, z[i](x, y + EPS_Y));
+    else Projection(&pt[2], x + EPS_X, y + EPS_Y, z[i](x + EPS_X, y + EPS_Y));
+    if(modeColor == 0)  WSetColor(cx[(int)((0.5 + atan(COEF * z[i](x+EPS_X/2., y + EPS_Y/2.))/PI)*100)]);
     else {
-        Init(u, 0, dy, (z[i](x, y + dy) - z[i](x, y)));
-        Init(w, dx, 0, (z[i](x + dx, y) -  z[i](x, y)));
+        Init(u, 0, EPS_Y, (z[i](x, y + EPS_Y) - z[i](x, y)));
+        Init(w, EPS_X, 0, (z[i](x + EPS_X, y) -  z[i](x, y)));
         cross(u, w, normal);
         normalize(normal, 3);
         if(normal[2] < 1e-20) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
         WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*99)]);
     }
-    invmapX(pts, pt, 3); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
-    WFillPolygon (pt, 3);
+    if(EPS_X*EPS_Y < 1e-2)  {
+        Projection(&pt[3], x, y + EPS_Y, z[i](x, y + EPS_Y));
+        invmapX(pt, xpt, 4);
+        WFillPolygon (xpt, 4);
+    } else {
+    invmapX(pt, xpt, 3); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
+    WFillPolygon (xpt, 3);
     
-    Projection(&pts[0], x + dx, y + dy, z[i](x + dx, y + dy));
-    if(modeColor != 0) {
-        Init(u, 0, (-1)*dy, (z[i](x + dx, y) - z[i](x + dx, y + dy)));
-        Init(w, (-1)*dx, 0, (z[i](x, y + dy) -  z[i](x + dx, y + dy)));
-        cross(u, w, normal);
-        normalize(normal, 3);
-        if(normal[2] < 1e-20) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
-        WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*99)]);
+    Projection(&pt[0], x + EPS_X, y + EPS_Y, z[i](x + EPS_X, y + EPS_Y));
+    
+        invmapX(pt, xpt, 3);
+        WFillPolygon (xpt, 3);
     }
-        invmapX(pts, pt, 3);
-        WFillPolygon (pt, 3);
+    }
 }
 
 
@@ -352,97 +367,51 @@ int comp (const void *i, const void *j)
     if(((const Pair*) i) -> z > ((const Pair*) j) -> z) return 1;
     else return -1;
 }
+
+int ufun(double a, double b, double t) {
+    if (a > b) return (t < a);
+    else return (t > a);
+}
     
 void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long firstColor,
                   unsigned long secondColor, int mode, int modeColor, int n) {
-    double dx = 5*(1e-2), dy = 5*(1e-2); Pair m[8];
-    double u[3], w[3]; Point pts[3]; XPoint pt[3];
+    double dx = EPS_X, dy = EPS_Y, miny = a, maxy = b, minx = a, maxx = b; Pair m[8]; 
+    double u[3], w[3];
     pallette(firstColor, secondColor, modeColor);
     VectorSight();
+    if(key == 0) InitCameraPosition(b + 10);
     farY = a; nearY = b;
-        if( cameraPos*view[1] - (a + b)/2. > 1e-20 &&
-           fabs(cameraPos*view[1] - (a + b)/2.) > fabs(cameraPos*view[0] - (a + b)/2.)) {
-            for (double y = a; y < b + 1e-2; y+=dy) {
-                for (double x = a; x < b + 1e-2; x+=dx) {
+        if(fabs(cameraPos*view[1] - (a + b)/2.) > fabs(cameraPos*view[0] - (a + b)/2.)) {
+            if( cameraPos*view[1] - (a + b)/2.< 1e-20 ) { dy *= -1; miny = b; maxy = a; }
+            for (double y = miny; ufun(maxy, miny, y); y+=dy) {
+                for (double x = a; x < b; x+=dx) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
                         if(view[2] > 1e-20) {
-                            if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
-                                elemDraw(x, y, z, dx, dy, m[i].num, u, w , pts, pt, modeColor);
-                            }
+                            if(!(mode && LineSightControlAxes(x, y, z[m[i].num](x, y))))
+                                elemDraw(x, y, z, m[i].num, u, w, modeColor);
                         } else {
-                            if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
-                                elemDraw(x, y, z, dx, dy, m[n-i-1].num, u, w , pts, pt, modeColor);
-                            }
+                            if(!(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y))))
+                                elemDraw(x, y, z, m[n-i-1].num, u, w, modeColor);
                         }
                     }
                 }
             }
         }
-        if( cameraPos*view[1] - (a + b)/2.< 1e-20 &&
-           fabs(cameraPos*view[1] - (a + b)/2.) > fabs(cameraPos*view[0] - (a + b)/2.)) {
-            for (double y = b; y > a - 1e-2; y -= dy) {
-                for (double x = a; x < b + 1e-2; x += dx) {
+        if(fabs(cameraPos*view[1] - (a + b)/2.) < fabs(cameraPos*view[0] - (a + b)/2.)) {
+            if( cameraPos*view[0] - (a + b)/2. < 1e-20 ) { dx *= -1; maxx = a; minx = b;}
+            for (double x = minx; ufun(maxx, minx, x); x+=dx) {
+                for (double y = a; y < b; y+=dy) {
                     for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
                     qsort(m, n, sizeof(*m), &comp);
                     for (int i = 0; i < n; i++)  {
                         if(view[2] > 1e-20) {
-                            if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
-                                elemDraw(x, y, z, dx, -dy, m[i].num, u, w , pts, pt, modeColor);
-                            }
+                            if(!(mode && LineSightControlAxes(x, y, z[m[i].num](x, y))))
+                                elemDraw(x, y, z, m[i].num, u, w, modeColor);
                         } else {
-                            if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
-                                elemDraw(x, y, z, dx, -dy, m[n-i-1].num, u, w , pts, pt, modeColor);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if( cameraPos*view[0] - (a + b)/2. > 1e-20 &&
-           fabs(cameraPos*view[1] - (a + b)/2.) < fabs(cameraPos*view[0] - (a + b)/2.)) {
-            for (double x = a; x < b + 1e-2; x+=dx) {
-                for (double y = a; y < b + 1e-2; y+=dy) {
-                    for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
-                    qsort(m, n, sizeof(*m), &comp);
-                    for (int i = 0; i < n; i++)  {
-                        if(view[2] > 1e-20) {
-                            if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
-                                elemDraw(x, y, z, dx, dy, m[i].num, u, w , pts, pt, modeColor);
-                            }
-                        } else {
-                            if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
-                                elemDraw(x, y, z, dx, dy, m[n-i-1].num, u, w , pts, pt, modeColor);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if( cameraPos*view[0] - (a + b)/2. < 1e-20 &&
-           fabs(cameraPos*view[1] - (a + b)/2.) < fabs(cameraPos*view[0] - (a + b)/2.)) {
-            for (double x = b; x > a - 1e-2; x-=dx) {
-                for (double y = a; y < b + 1e-2; y+=dy) {
-                    for (int i = 0; i < n; i++)  { m[i].z = z[i](x,y); m[i].num = i; }
-                    qsort(m, n, sizeof(*m), &comp);
-                    for (int i = 0; i < n; i++)  {
-                        if(view[2] > 1e-20) {
-                            if((fabs(z[m[i].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[i].num](x, y)))) {
-                                elemDraw(x, y, z, -dx, dy, m[i].num, u, w , pts, pt, modeColor);
-                            }
-                        } else {
-                            if((fabs(z[m[n-i-1].num](x, y)) < 5) &&
-                               !(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y)))) {
-                                elemDraw(x, y, z, -dx, dy, m[n-i-1].num, u, w , pts, pt, modeColor);
-                            }
+                            if(!(mode && LineSightControlAxes(x, y, z[m[n-i-1].num](x, y))))
+                                elemDraw(x, y, z, m[n-i-1].num, u, w, modeColor);
                         }
                     }
                 }
@@ -451,7 +420,7 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned l
 }
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode) {
-    double dt = 1e-4; Point pts[2]; XPoint pt[2];
+    double dt = 1e-4; Point pts[2]; XPoint ptx[2];
     VectorSight();
     nearY = farY = curvefun[1](it);
     SetLineWidth(3);
@@ -465,7 +434,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             Projection(&pts[0], curvefun[0](t), curvefun[1](t), curvefun[2](t));
             Projection(&pts[1], curvefun[0](t+dt), curvefun[1](t+dt), curvefun[2](t+dt));
             WSetColor(cx[(int)((0.5 + atan(COEF * curvefun[2](t + dt/2.))/PI)*100)]);
-            DrawLineX(pts, pt);
+            DrawLineX(pts, ptx);
         }
     }
 }
@@ -473,7 +442,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
     double dt = (ft-it)/100., ds = (fs-is)/100.; double u[3],w[3],tmpx[3];
-    Point pts[4], m[0x8000]; XPoint pt[4]; Pair z[0x8000];
+    Pair z[0x8000]; Point m[0x8000];
     int j = 0;
     VectorSight();
     pallette(firstColor, secondColor, modeColor);
@@ -483,7 +452,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
             if(parfun[1](t,s) > nearY) nearY = parfun[1](t,s);
             if(parfun[1](t,s) < farY) farY = parfun[1](t,s);
         }
-    }
+    } if(key == 0) InitCameraPosition(nearY + 10);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {
             m[j].x = t; m[j].y = s;
@@ -494,16 +463,17 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
         }
     } qsort(z, j, sizeof(*z), &comp);
     for (int i = j - 1; i >= 0; i--) {
-        if((fabs(parfun[2](m[z[i].num].x, m[z[i].num].y)) < 5) &&
-           !(mode && LineSightControlAxes(parfun[0](m[z[i].num].x, m[z[i].num].y),
+        Init(tmp, parfun[0](m[z[i].num].x, m[z[i].num].y), parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)); MxV(M, tmp);
+        if(cameraPos -  tmp[1] > 5e-1) {
+        if(!(mode && LineSightControlAxes(parfun[0](m[z[i].num].x, m[z[i].num].y),
                     parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)))) {
-            Projection(&pts[0], parfun[0](m[z[i].num].x, m[z[i].num].y),
+            Projection(&pt[0], parfun[0](m[z[i].num].x, m[z[i].num].y),
                        parfun[1](m[z[i].num].x, m[z[i].num].y),
                        parfun[2](m[z[i].num].x, m[z[i].num].y));
-            Projection(&pts[1], parfun[0](m[z[i].num].x + dt, m[z[i].num].y),
+            Projection(&pt[1], parfun[0](m[z[i].num].x + dt, m[z[i].num].y),
                        parfun[1](m[z[i].num].x + dt, m[z[i].num].y),
                        parfun[2](m[z[i].num].x + dt, m[z[i].num].y));
-            Projection(&pts[2], parfun[0](m[z[i].num].x, m[z[i].num].y + ds),
+            Projection(&pt[2], parfun[0](m[z[i].num].x, m[z[i].num].y + ds),
                        parfun[1](m[z[i].num].x, m[z[i].num].y + ds),
                        parfun[2](m[z[i].num].x, m[z[i].num].y + ds));
             if(modeColor == 0) WSetColor(cx[(int)((0.5 + atan(COEF * parfun[2](m[z[i].num].x, m[z[i].num].y))/PI)*100)]);
@@ -518,17 +488,26 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
                 normalize(normal, 3); //printf("%f\n", inner(normal, normal, 3));
                 WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*99)]);
             }
-                invmapX(pts, pt, 3);
-                WFillPolygon (pt, 3);
+                invmapX(pt, xpt, 3);
+                WFillPolygon (xpt, 3);
             
-            Projection(&pts[0], parfun[0](m[z[i].num].x + dt, m[z[i].num].y + ds),
+            Projection(&pt[0], parfun[0](m[z[i].num].x + dt, m[z[i].num].y + ds),
                        parfun[1](m[z[i].num].x + dt, m[z[i].num].y + ds),
                        parfun[2](m[z[i].num].x + dt, m[z[i].num].y + ds));
 
-                invmapX(pts, pt, 3);
-                WFillPolygon (pt, 3);
+                invmapX(pt, xpt, 3);
+                WFillPolygon (xpt, 3);
+        }
         }
     }
 }
 
 
+/*if(modeColor != 0) {
+ Init(u, 0, (-1)*dy, (z[i](x + dx, y) - z[i](x + dx, y + dy)));
+ Init(w, (-1)*dx, 0, (z[i](x, y + dy) -  z[i](x + dx, y + dy)));
+ cross(u, w, normal);
+ normalize(normal, 3);
+ if(normal[2] < 1e-20) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
+ WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*99)]);
+ }*/
