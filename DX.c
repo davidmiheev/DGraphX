@@ -26,6 +26,8 @@
 #define EPS_X 5e-2
 #define EPS_Y 5e-2
 
+#define BUF_SIZE 0x8000
+
 //#define min(a,b) fabs(a) < fabs(b) ? fabs(a) : fabs(b)
 
 // If there can be an X-axis and a Y-axis, why not a Z-axis?
@@ -329,9 +331,14 @@ int LineSightControlAxes(double x, double y, double z) {
     return 0;
 }
 
+int SightControl(double x, double y, double z) {
+    Init(tmp, x, y, z);
+    MxV(M, tmp);
+    return (cameraPos - tmp[1] > 5e-1);
+}
+
 void elemDraw(double x, double y, double (*z[]) (double, double), int i, double *u, double *w, int modeColor) {
-    Init(tmp, x, y, z[i](x,y)); MxV(M, tmp);
-    if(cameraPos - tmp[1] > 5e-1) {
+    if(SightControl(x, y, z[i](x, y))) {
     Projection(&pt[0], x, y, z[i](x, y));
     Projection(&pt[1], x + EPS_X, y, z[i](x + EPS_X, y));
     if(EPS_X*EPS_Y > 1e-2) Projection(&pt[2], x, y + EPS_Y, z[i](x, y + EPS_Y));
@@ -430,11 +437,13 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
         if(curvefun[1](t) < farY) farY = curvefun[1](t);
     }
     for(double t = it; t < s; t += dt) {
+        if(SightControl(curvefun[0](t), curvefun[1](t), curvefun[2](t))) {
         if(!(mode && LineSightControlAxes(curvefun[0](t), curvefun[1](t), curvefun[2](t)))) {
             Projection(&pts[0], curvefun[0](t), curvefun[1](t), curvefun[2](t));
             Projection(&pts[1], curvefun[0](t+dt), curvefun[1](t+dt), curvefun[2](t+dt));
             WSetColor(cx[(int)((0.5 + atan(COEF * curvefun[2](t + dt/2.))/PI)*100)]);
             DrawLineX(pts, ptx);
+        }
         }
     }
 }
@@ -442,7 +451,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
     double dt = (ft-it)/100., ds = (fs-is)/100.; double u[3],w[3],tmpx[3];
-    Pair z[0x8000]; Point m[0x8000];
+    Pair z[BUF_SIZE]; Point m[BUF_SIZE];
     int j = 0;
     VectorSight();
     pallette(firstColor, secondColor, modeColor);
@@ -463,8 +472,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
         }
     } qsort(z, j, sizeof(*z), &comp);
     for (int i = j - 1; i >= 0; i--) {
-        Init(tmp, parfun[0](m[z[i].num].x, m[z[i].num].y), parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)); MxV(M, tmp);
-        if(cameraPos -  tmp[1] > 5e-1) {
+        if(SightControl(parfun[0](m[z[i].num].x, m[z[i].num].y), parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y))) {
         if(!(mode && LineSightControlAxes(parfun[0](m[z[i].num].x, m[z[i].num].y),
                     parfun[1](m[z[i].num].x, m[z[i].num].y), parfun[2](m[z[i].num].x, m[z[i].num].y)))) {
             Projection(&pt[0], parfun[0](m[z[i].num].x, m[z[i].num].y),

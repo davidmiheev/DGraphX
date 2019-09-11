@@ -85,15 +85,15 @@ double curvez(double t) { // z-component for ParametricCurve3D
     return /*t*/10*sin(2*t);
 }
 double parx(double t, double s) { // x-component for ParametricGraph3D
-    return /*3*cos(t)*cos(s)//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)*/ (3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t);
+    return /*3*cos(t)*cos(s);//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)// (3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t)*/-(2./15.)*cos(t)*(3*cos(s) - 30*sin(t) + 90*mypow(cos(t), 4)*sin(t)-60*mypow(cos(t), 6)*sin(t)+5*cos(t)*sin(t)*cos(s));
 }
 
 double pary(double t, double s) { // y-component for ParametricGraph3D
-    return /*3*cos(t)*sin(s)//-s*(1-s*s/3.+t*t)/3.;//2*cosh(t)*sin(s);//s*sin(t);//2*(4+cos(t))*sin(s)*/(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t);
+    return /*3*cos(t)*sin(s);//-s*(1-s*s/3.+t*t)/3.;//2*cosh(t)*sin(s);//s*sin(t);//2*(4+cos(t))*sin(s)//(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t)*/-(1./15.)*sin(t)*(3*cos(s) - 3*mypow(cos(t),2)*cos(s)-48*mypow(cos(t),4)*cos(s)+48*mypow(cos(t),6)*cos(s)-60*sin(t)+5*cos(t)*cos(s)*sin(t)-5*mypow(cos(t),3)*cos(s)*sin(t)-80*mypow(cos(t),5)*cos(s)*sin(t)+80*mypow(cos(t),7)*cos(s)*sin(t));
 }
 
 double parz(double t, double s) { // z-component for ParametricGraph3D
-    return /*(t*t - s*s)/3.;//2*t*/sin(t/2.)*sin(s)+cos(t/2.)*sin(2*s);
+    return /*3*sin(t);//(t*t - s*s)/3.;//2*t//sin(t/2.)*sin(s)+cos(t/2.)*sin(2*s)*/(2./15.)*(3+5*cos(t)*sin(t))*sin(s);
 }
 
 double polynom(double y,double *x,double *m,int i) { // for interpolation
@@ -311,7 +311,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
             if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
-            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ -PI, PI, 0, 2*PI, key_5, key_8);
+            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, PI, 0, 2*PI, key_5, key_8);
         }
     }
 }
