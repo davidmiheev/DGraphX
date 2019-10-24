@@ -32,7 +32,9 @@
 
 // If there can be an X-axis and a Y-axis, why not a Z-axis?
 
-double xc, yc;
+double xc = INIT_SCALE, yc =  INIT_SCALE;
+
+double xmin = 0, xmax = 0, ymin = 0, ymax = 0;
 
 static double M[9];
 
@@ -56,7 +58,17 @@ static Point pt[4];
 
 static XPoint xpt[4];
 
+static double gridleft, gridright, griddown, gridup;
+
 static int key = 0;
+
+static int key_1 = 0;
+
+void SetSize() {
+    double xcent = (xmax+xmin)/2., ycent = (ymax+ymin)/2.;
+    xmin = xcent-width*xc/2.; xmax = xcent + width*xc/2.; ymin = ycent - height*yc/2.; ymax = ycent + height*yc/2.;
+    gridleft = xmin; gridright = xmax; griddown = ymin; gridup = ymax;
+}
 
 Point map(int x, int y) {
     Point P; double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
@@ -66,7 +78,8 @@ Point map(int x, int y) {
 }
 
 XPoint invmap(double x, double y) {
-    XPoint pt; double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
+    XPoint pt;
+    double kx = (-xmin)/(xmax - xmin), ky = (ymax)/(ymax - ymin);
     pt.x = x/xc + width * kx;
     pt.y = -y/yc + height * ky;
     return pt;
@@ -124,6 +137,15 @@ void SetShadingColor(unsigned long color) {
     SHADINGCOLOR = color;
 }
 
+void DrawLinear(Point *pt, int n) {
+    pallette(RED, BLUE, 0, n - 1);
+    SetLineWidth(4);
+    for (int i = 0; i < n - 1; i++) {
+        WSetColor(cx[i]);
+        DrawLine(pt[i].x, pt[i].y, pt[i + 1].x, pt[i + 1].y);
+    }
+}
+
 void DrawGraph2D(double f(double), double a, double b) {
     double dx = 1e-3;
     WSetColor (RED);
@@ -153,12 +175,52 @@ void DrawLine(double x1, double y1, double x2, double y2) {
               invmap(x2,y2).x, invmap(x2,y2).y);
 }
 
-void DrawGrid() {
+void DrawGrid(int mode) {
+    double a = gridright, b = gridleft, c = gridup, d = griddown;
     SetLineWidth(0);
+    if(gridright - gridleft > 2*(xmax - xmin) ||
+       gridup - griddown > 2*(ymax - ymin))  {
+        key_1++; a = xmax; b = xmin; c = ymax; d = ymin;
+    }
+    if(gridright - gridleft < (xmax - xmin)/2. ||
+       gridup - griddown < (ymax - ymin)/2.) {
+        key_1--; a = xmax; b = xmin; c = ymax; d = ymin;
+    }
+    gridright = a; gridleft = b; gridup = c; griddown = d;
+    if(key_1 != 0) {
+    switch (key_1 > 0) {
+        case 1:
+            for (int i = 0; i < key_1; i++) {
+            xmin *= 2; xmax *= 2; ymin *= 2; ymax *= 2; xc *= 2; yc *= 2;
+            }
+            break;
+        case 0:
+            for (int i = 0; i > key_1; i--) {
+            xmin /= 2; xmax /= 2; ymin /= 2; ymax /= 2; xc /= 2; yc /= 2;
+            }
+            break;
+    }
+    }
+    if(mode == 1) {
     for (int i = (int) xmin; i <= (int) xmax ; i++)
-        if(i != 0) DrawLine((double) i, ymin, (double) i, ymax);
-    for (int i = (int) ymin; i <= (int) ymax ; i++)
-        if(i != 0) DrawLine(xmin, (double) i, xmax, (double) i);
+    { if(i != 0) DrawLine((double) i, ymin, (double) i, ymax); }
+    for (int i = (int) ymin; i <= (int) ymax; i++)
+    {   if(i != 0) DrawLine(xmin, (double) i, xmax, (double) i); }
+    }
+     if(key_1 != 0) {
+         switch (key_1 > 0) {
+        case 1:
+            for (int i = 0; i < key_1; i++) {
+            xmin /= 2; xmax /= 2; ymin /= 2; ymax /= 2; xc /= 2; yc /= 2;
+            }
+            break;
+        case 0:
+            for (int i = 0; i > key_1; i--) {
+            xmin *= 2; xmax *= 2; ymin *= 2; ymax *= 2; xc *= 2; yc *= 2;
+            }
+            break;
+         }
+     }
 }
 
 void DrawAxes2D() {
@@ -170,7 +232,7 @@ void DrawAxes2D() {
     WFillTriangle (width-5, invmap(0,0).y, width-30, invmap(0,0).y - 5, width-30, invmap(0,0).y + 5);
     WDrawString ("X", width - 20, invmap(0,0).y + 20);
     WDrawString ("Y", invmap(0,0).x - 20, 20);
-    DrawPoint(invmap(0,0).x, invmap(0,0).y,4);
+    DrawPoint(invmap(0,0).x, invmap(0,0).y, 4);
 }
 
 void invmapX(Point * pts, XPoint *pt, int n) {
@@ -184,17 +246,18 @@ void DrawLineX(Point * pts, XPoint *pt) {
     WDrawLine(pt[0].x, pt[0].y, pt[1].x, pt[1].y);
 }
 //============ colors (to improve) ==========
-void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor) {
+void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size) {
     unsigned long tmpx;
     XColor fc, sc;
+    if(size > 128) size = 128;
     if(modeColor == 0) fc.pixel = firstColor; else fc.pixel = BLACK;
     QueryColor(&fc);
     if(modeColor == 0) sc.pixel = secondColor; else sc.pixel = SHADINGCOLOR;
     QueryColor(&sc);
-    for (int i = 0; i < 100; i++) {
-       WGetColor(fc.red + (sc.red - fc.red)*i/100,
-                 fc.green + (sc.green - fc.green)*i/100,
-                 fc.blue + (sc.blue - fc.blue)*i/100, &tmpx);
+    for (int i = 0; i < size; i++) {
+       WGetColor(fc.red + (sc.red - fc.red)*i/size,
+                 fc.green + (sc.green - fc.green)*i/size,
+                 fc.blue + (sc.blue - fc.blue)*i/size, &tmpx);
        cx[i] = tmpx;
     }
 }
@@ -243,8 +306,8 @@ void IdMatrix() {
 void Projection(Point *p, double x, double y, double z) {
     Init(tmp, x, y, z);
     MxV(M, tmp);
-    p->x = 2*tmp[0]*(nearY - farY)/(cameraPos - tmp[1]);
-    p->y = 2*tmp[2]*(nearY - farY)/(cameraPos - tmp[1]);
+    p->x = 240*tmp[0]/(nearY - farY)/(cameraPos - tmp[1]);
+    p->y = 240*tmp[2]/(nearY - farY)/(cameraPos - tmp[1]);
 }
 
 Point ObliqueProjection ( /*PointR3 p*/ double x, double y, double z ) {
@@ -384,9 +447,9 @@ void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned l
                   unsigned long secondColor, int mode, int modeColor, int n) {
     double dx = EPS_X, dy = EPS_Y, miny = a, maxy = b, minx = a, maxx = b; Pair m[8]; 
     double u[3], w[3];
-    pallette(firstColor, secondColor, modeColor);
+    pallette(firstColor, secondColor, modeColor, 100);
     VectorSight();
-    if(key == 0) InitCameraPosition(b + 10);
+    if(key == 0) InitCameraPosition(b + 5);
     farY = a; nearY = b;
         if(fabs(cameraPos*view[1] - (a + b)/2.) > fabs(cameraPos*view[0] - (a + b)/2.)) {
             if( cameraPos*view[1] - (a + b)/2.< 1e-20 ) { dy *= -1; miny = b; maxy = a; }
@@ -431,7 +494,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
     VectorSight();
     nearY = farY = curvefun[1](it);
     SetLineWidth(3);
-    pallette(RED, BLUE, 0);
+    pallette(RED, BLUE, 0, 100);
     for(double t = it; t < s; t += dt) {
         if(curvefun[1](t) > nearY) nearY = curvefun[1](t);
         if(curvefun[1](t) < farY) farY = curvefun[1](t);
@@ -454,14 +517,14 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
     Pair z[BUF_SIZE]; Point m[BUF_SIZE];
     int j = 0;
     VectorSight();
-    pallette(firstColor, secondColor, modeColor);
+    pallette(firstColor, secondColor, modeColor, 100);
     nearY = farY = parfun[1](it, is);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {
             if(parfun[1](t,s) > nearY) nearY = parfun[1](t,s);
             if(parfun[1](t,s) < farY) farY = parfun[1](t,s);
         }
-    } if(key == 0) InitCameraPosition(nearY + 10);
+    } if(key == 0) InitCameraPosition(nearY + 5);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {
             m[j].x = t; m[j].y = s;
@@ -510,6 +573,55 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
     }
 }
 
+void DrawPolytope(Face *f, int n) {
+    double tmpx[3], a = 0, b = 0, c = 0, u[3], w[3]; Point vert[10]; XPoint vertx[10];
+    Pair z[1000];
+    VectorSight();
+    pallette(RED, BLUE, 1, 100);
+    nearY = 6; farY = -6;
+    if(key == 0) InitCameraPosition(10);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < f[i].n; j++) {
+            a += f[i].vertex[0][j]/(f[i].n);
+            b += f[i].vertex[1][j]/(f[i].n);
+            c += f[i].vertex[2][j]/(f[i].n);
+        }
+        Init(tmpx, cameraPos*view[0] - a,
+             cameraPos*view[1] - b,
+             cameraPos*view[2] - c);
+        z[i].z = inner(tmpx, tmpx, 3); z[i].num = i;
+        a = 0; b = 0; c = 0;
+    } a = 0; b = 0; c = 0;
+    qsort(z, n, sizeof(*z), &comp);
+    for (int i = n - 1; i >= 0; i--) {
+        for (int j = 0; j < f[i].n; j++) {
+            a += f[z[i].num].vertex[0][j]/(f[z[i].num].n);
+            b += f[z[i].num].vertex[1][j]/(f[z[i].num].n);
+            c += f[z[i].num].vertex[2][j]/(f[z[i].num].n);
+        } Init(tmpx, a, b, c);
+        if(SightControl(a, b, c)) {
+        Init(u, f[z[i].num].vertex[0][1] - f[z[i].num].vertex[0][0],
+            f[z[i].num].vertex[1][1]-f[z[i].num].vertex[1][0],
+                 f[z[i].num].vertex[2][1]-f[z[i].num].vertex[2][0]);
+        Init(w, f[z[i].num].vertex[0][f[z[i].num].n-1] - f[z[i].num].vertex[0][0],
+            f[z[i].num].vertex[1][f[z[i].num].n-1]-f[z[i].num].vertex[1][0],
+                 f[z[i].num].vertex[2][f[z[i].num].n-1]-f[z[i].num].vertex[2][0]);
+        cross(u,w,normal);
+        if(inner(normal, tmpx, 3) < 0) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
+        normalize(normal, 3);
+        WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*100)]);
+        for (int j = 0; j < f[z[i].num].n; j++)
+                Projection(&vert[j], f[z[i].num].vertex[0][j],
+                       f[z[i].num].vertex[1][j],
+                       f[z[i].num].vertex[2][j]);
+        
+        invmapX(vert, vertx, f[z[i].num].n);
+        WFillPolygon (vertx, f[z[i].num].n);
+        } a = 0; b = 0; c = 0;
+  }
+}
+    
+
 
 /*if(modeColor != 0) {
  Init(u, 0, (-1)*dy, (z[i](x + dx, y) - z[i](x + dx, y + dy)));
@@ -518,4 +630,36 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
  normalize(normal, 3);
  if(normal[2] < 1e-20) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
  WSetColor(cx[(int)((inner(normal, light, 3)/2. + 1./2.)*99)]);
- }*/
+ }
+ 
+ 
+ Init(u, f[z[i].num].vertex[0][1] - f[z[i].num].vertex[0][0],
+ f[z[i].num].vertex[1][1]-f[z[i].num].vertex[1][0],
+      f[z[i].num].vertex[2][1]-f[z[i].num].vertex[2][0]);
+ Init(w, f[z[i].num].vertex[0][f[z[i].num].n-1] - f[z[i].num].vertex[0][0],
+ f[z[i].num].vertex[1][f[z[i].num].n-1]-f[z[i].num].vertex[1][0],
+      f[z[i].num].vertex[2][f[z[i].num].n-1]-f[z[i].num].vertex[2][0]);
+ cross(u,w,normal);
+ normalize(normal, 3);
+ */
+/*switch(i%6) {
+    case 0:
+        WSetColor(BLUE);
+        break;
+    case 1:
+        WSetColor(GREEN);
+        break;
+    case 2:
+        WSetColor(RED);
+        break;
+    case 3:
+        WSetColor(YELLOW);
+        break;
+    case 4:
+        WSetColor(MAGENTA);
+        break;
+    case 5:
+        WSetColor(CYAN);
+        break;
+}*/
+//WSetColor(cx[z[i].num]);

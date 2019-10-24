@@ -28,9 +28,8 @@ void reverse(char s[])
 }
 
 void dtoa(double x, char s[]) {
-    int i, sign, n = (int) 100*x;
-    if ((sign = n) < 0)
-        n = -n; i = 0;
+    int i = 0, n = (int) 100*x, sign = n;
+    if (n < 0) n = -n;
     do {
         s[i++] = n % 10 + '0';
     } while ((n /= 10) > 0);
@@ -42,11 +41,8 @@ void dtoa(double x, char s[]) {
 }
 
 void itoa(int n, char s[]) {
-    int i, sign;
-    
-    if ((sign = n) < 0)
-        n = -n;
-    i = 0;
+    int i = 0, sign = n;
+    if (n < 0) n = -n;
     do {
         s[i++] = n % 10 + '0';   
     } while ((n /= 10) > 0);
@@ -56,7 +52,7 @@ void itoa(int n, char s[]) {
     reverse(s);
 }
 
-void scat(char* s, char* str, unsigned long len, char* msg) {
+void scat(const char* s, char* str, unsigned long len, char* msg) {
 
     for (unsigned long i = 0; i < len + strlen(str); i++) {
         if(i < len) msg[i] = s[i];

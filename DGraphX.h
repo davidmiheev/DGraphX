@@ -8,7 +8,7 @@
 
 #include <X11/keysym.h>
 #include <X11/Xlib.h>
-
+ 
 typedef struct {
   unsigned long black;
   unsigned long blue;
@@ -53,12 +53,15 @@ typedef struct {
 #define DASH LineOnOffDash
 //=============================
 
+#define INIT_SCALE 0.02
+
 //======= Global data =========
 extern COLORS rColors;
 extern int width;
 extern int height;
 extern double xc, yc;
 extern double xmin, xmax, ymin, ymax;
+extern int x_0, y_0;
 //=============================
 
 #define KEY_PRESS_NOTHING	0
@@ -76,6 +79,11 @@ typedef  struct {
     int num;
 } Pair;
 
+typedef struct {
+    double vertex[3][10];
+    int n;
+} Face;
+
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), double*, int*,double,double);
 
@@ -92,10 +100,12 @@ void DrawArc(int ,int , unsigned int, unsigned int, int, int);
 void DrawLine(double,double,double,double);
 void DrawAxes2D();
 void DrawAxes();
-void DrawGrid();
+void DrawGrid(int mode);
 void scale(int mode, double a, double b, double lambda);
 void xshift(int mode, double valueOfShift);
 void yshift(int mode, double valueOfShift);
+
+void DrawLinear(Point *pt, int n);
 
 void DrawGraph2D(double f(double), double a, double b);
 
@@ -109,6 +119,9 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 void ParametricGraph3D(double (*parfun[]) (double, double),
                        unsigned long, unsigned long, double, double, double, double, int, int);
 
+void DrawPolytope(Face *f, int n);
+
+void SetSize();
 void SetLineWidth(int);
 
 void SetLineStyle(int style);
@@ -135,6 +148,7 @@ void RotateY(int mode);
 void RotateZ(int mode);
 void IdMatrix();
 
+void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size);
 int WGetColor (unsigned int, unsigned int, unsigned int, unsigned long*);
 void QueryColor(XColor *color);
 

@@ -16,6 +16,8 @@
 #define WND_MIN_WDT     50
 #define WND_MIN_HGT     50
 #define WND_BORDER_WDT  5
+#define PIXMAP_SIZE     3000
+
 
 #define FOREVER for(;;)
 
@@ -118,6 +120,8 @@ COLORS rColors;
 
 int width = WND_WDT;
 int height = WND_HGT;
+int x_0 = PIXMAP_SIZE/2 - WND_WDT/2;
+int y_0 = PIXMAP_SIZE/2 - WND_HGT/2;
 
 int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
 	    int (*KeyPressFunction) (int), double* x, int* n, double a, double b) {
@@ -134,7 +138,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
   nWnd = XCreateSimpleWindow (prDisplay, RootWindow (prDisplay, nScreenNum),
 			      WND_X, WND_Y, WND_WDT, WND_HGT, WND_BORDER_WDT,
 			      BlackPixel (prDisplay, nScreenNum),
-			      WhitePixel (prDisplay, nScreenNum));
+			      BlackPixel (prDisplay, nScreenNum));
 
   if (SetWindowManagerHints (prDisplay, PRG_CLASS, nWnd,
 			     WND_MIN_WDT, WND_MIN_HGT, WND_TITLE, WND_ICON_TITLE, 0))
@@ -155,7 +159,8 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
       nDepth = rAttributes.depth;
     } else return X11_ERR_5;
 
-  draw = XCreatePixmap (prDisplay, nWnd, width, height, nDepth);
+  draw = XCreatePixmap (prDisplay, nWnd, PIXMAP_SIZE, PIXMAP_SIZE, nDepth);
+    SetSize();
     
   if (!draw)
     return X11_ERR_4;
@@ -174,17 +179,18 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
                   if (width != rAttributes.width
                       || height != rAttributes.height
                       || nDepth != rAttributes.depth) {
-                      XFreePixmap (prDisplay, draw);
                       width = rAttributes.width;
                       height = rAttributes.height;
                       nDepth = rAttributes.depth;
-                      draw = XCreatePixmap (prDisplay, nWnd, width, height, nDepth);
+                      x_0 = PIXMAP_SIZE/2 - width/2;
+                      y_0 = PIXMAP_SIZE/2 - height/2;
+                      SetSize();
                       if (!draw) return X11_ERR_4;
                   }
               } else return X11_ERR_5;
 
               DrawWindowContent (x,n,a,b);
-              XCopyArea (prDisplay, draw, nWnd, prGC, 0, 0, width, height, 0, 0);
+              XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
               break;
               
           case KeyPress:
@@ -222,35 +228,39 @@ void WSetColor (unsigned long color) {
 }
 
 void WDrawString (const char *string, int x, int y) {
-  XDrawString (prDisplay, draw, prGC, x, y, string, strlen (string));
+  XDrawString (prDisplay, draw, prGC, x_0 + x, y_0 + y, string, strlen (string));
 }
 
 void WDrawPoint (int x, int y) {
-  XDrawPoint (prDisplay, draw, prGC, x, y);
+  XDrawPoint (prDisplay, draw, prGC, x_0 + x, y_0 + y);
 }
 
 void WDrawLine (int x_start, int y_start, int x_end, int y_end) {
-  XDrawLine (prDisplay, draw, prGC, x_start, y_start, x_end, y_end);
+  XDrawLine (prDisplay, draw, prGC, x_0 + x_start, y_0 + y_start, x_0 + x_end, y_0 + y_end);
 }
 
 void WDrawRectangle (int x_top_left, int y_top_left, int x_bottom_right, int y_bottom_right) {
-  XDrawRectangle (prDisplay, draw, prGC, x_top_left, y_top_left,
-		  x_bottom_right - x_top_left + 1,
-		  y_bottom_right - y_top_left + 1);
+  XDrawRectangle (prDisplay, draw, prGC, x_0 + x_top_left, y_0 + y_top_left,
+		  x_0 + x_bottom_right - x_top_left + 1,
+		  y_0 + y_bottom_right - y_top_left + 1);
 }
 
 void WFillRectangle (int x_top_left, int y_top_left, int x_bottom_right, int y_bottom_right) {
-  XFillRectangle (prDisplay, draw, prGC, x_top_left, y_top_left,
-		  x_bottom_right - x_top_left + 2,
-		  y_bottom_right - y_top_left + 2);
+  XFillRectangle (prDisplay, draw, prGC, x_0 + x_top_left, y_0 + y_top_left,
+		  x_0 + x_bottom_right - x_top_left + 2,
+		  y_0 + y_bottom_right - y_top_left + 2);
 }
 
 void WFillTriangle (int x_1, int y_1, int x_2, int y_2, int x_3, int y_3) {
-  XPoint points[3] = { {x_1, y_1}, {x_2, y_2}, {x_3, y_3} };
+  XPoint points[3] = { {x_0 + x_1, y_0 + y_1}, {x_0 + x_2, y_0 + y_2}, {x_0 + x_3, y_0 + y_3} };
   XFillPolygon (prDisplay, draw, prGC, points, 3, Convex, CoordModeOrigin);
 }
 
 void WFillPolygon (XPoint * points, int num) {
+    for (int i = 0; i < num; i++) {
+        points[i].x += x_0;
+        points[i].y += y_0;
+    }
   XFillPolygon (prDisplay, draw, prGC, points, num, Convex, CoordModeOrigin);
 }
    /* FillSolid, FillTiled, FillStippled, FillOpaeueStippled. */
@@ -282,11 +292,11 @@ void WSetTitle (const char *s) {
 }
 
 void DrawArc(int x,int y, unsigned int width, unsigned int height, int a1, int a2) {
-    XDrawArc(prDisplay,draw,prGC,x,y,width,height,a1,a2);
+    XDrawArc(prDisplay,draw,prGC,x_0+x,y_0+y,width,height,a1,a2);
 }
 
 void DrawPoint(int x, int y, int d) {
-    XPoint points[4] = { {x-d, y-d}, {x-d, y+d}, {x+d, y+d}, {x+d, y-d} };
+    XPoint points[4] = { {x_0+x-d, y_0+y-d}, {x_0+x-d, y_0+y+d}, {x_0+x+d, y_0+y+d}, {x_0+x+d, y_0+y-d} };
     XFillPolygon (prDisplay, draw, prGC, points, 4, Convex, CoordModeOrigin); //XFillArc(prDisplay, draw, prGC,x,y,d,d,0,360*64);
 }
 

@@ -8,7 +8,7 @@
 
 #define m(ix,jx) m[4*(ix)+jx]
 
-#define NMAX 100
+#define NMAX 100 
 #define STEP 0.05
 #define LAMBDA 1.1
 #define SHIFT 0.01
@@ -27,15 +27,17 @@ static int key_4 = 0;
 static int key_5 = 0;
 static int key_6 = 0;
 static int key_7 = 3;
-static int key_8 = 0;
+static int key_8 = 1;
 static int key_9 = 0;
+static int key_10 = 1;
 static int iter = 0;
 static int mode = 1;
 static int dim = 3;
 static int count = 0;
 static int count1 = 0;
-
-double xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
+static double m[4*NMAX];
+//static double d[NMAX];
+static Point pt[NMAX];
 
 double mypow(double x, int n) {
     double res = 1.;
@@ -62,7 +64,9 @@ double pary2D(double t) { // y-component for DrawParametric2D
 }
 
 double u(double x, double y) { // function for DrawGraph3DX
-    return 3*cos(3*sqrt(x*x+y*y))*exp(-sqrt(x*x+y*y)/3.);//sin(3*sqrt(x*x+y*y))/sqrt(x*x+y*y);
+    //if(sqrt(x*x+y*y) > 1e-5)
+    return 3*cos(3*sqrt(x*x+y*y))*exp(-sqrt(x*x+y*y)/3.);//6*sin(sqrt(x*x+y*y))/sqrt(x*x+y*y);
+    //else return 6.;
 }
 
 double w(double x, double y) { // function for DrawGraph3DX
@@ -70,7 +74,7 @@ double w(double x, double y) { // function for DrawGraph3DX
 }
 
 double z(double x, double y) { // function for DrawGraph3DX
-    return 1-(x*x+y*y)/6.;
+    return 4*sqrt((x-1)*(x-1)+y*y) - 1;
 }
 
 double curvex(double t) { // x-component for ParametricCurve3D
@@ -85,15 +89,15 @@ double curvez(double t) { // z-component for ParametricCurve3D
     return /*t*/10*sin(2*t);
 }
 double parx(double t, double s) { // x-component for ParametricGraph3D
-    return /*3*cos(t)*cos(s);//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)// (3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t)*/-(2./15.)*cos(t)*(3*cos(s) - 30*sin(t) + 90*mypow(cos(t), 4)*sin(t)-60*mypow(cos(t), 6)*sin(t)+5*cos(t)*sin(t)*cos(s));
+    return /*3*cos(t)*cos(s);//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)*/ 3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t);//-(2./15.)*cos(t)*(3*cos(s) - 30*sin(t) + 90*mypow(cos(t), 4)*sin(t)-60*mypow(cos(t), 6)*sin(t)+5*cos(t)*sin(t)*cos(s));
 }
 
 double pary(double t, double s) { // y-component for ParametricGraph3D
-    return /*3*cos(t)*sin(s);//-s*(1-s*s/3.+t*t)/3.;//2*cosh(t)*sin(s);//s*sin(t);//2*(4+cos(t))*sin(s)//(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t)*/-(1./15.)*sin(t)*(3*cos(s) - 3*mypow(cos(t),2)*cos(s)-48*mypow(cos(t),4)*cos(s)+48*mypow(cos(t),6)*cos(s)-60*sin(t)+5*cos(t)*cos(s)*sin(t)-5*mypow(cos(t),3)*cos(s)*sin(t)-80*mypow(cos(t),5)*cos(s)*sin(t)+80*mypow(cos(t),7)*cos(s)*sin(t));
+    return /*3*cos(t)*sin(s);//-s*(1-s*s/3.+t*t)/3.;//2*cosh(t)*sin(s);//s*sin(t);//2*(4+cos(t))*sin(s)/*/3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t);//-(1./15.)*sin(t)*(3*cos(s) - 3*mypow(cos(t),2)*cos(s)-48*mypow(cos(t),4)*cos(s)+48*mypow(cos(t),6)*cos(s)-60*sin(t)+5*cos(t)*cos(s)*sin(t)-5*mypow(cos(t),3)*cos(s)*sin(t)-80*mypow(cos(t),5)*cos(s)*sin(t)+80*mypow(cos(t),7)*cos(s)*sin(t));
 }
 
 double parz(double t, double s) { // z-component for ParametricGraph3D
-    return /*3*sin(t);//(t*t - s*s)/3.;//2*t//sin(t/2.)*sin(s)+cos(t/2.)*sin(2*s)*/(2./15.)*(3+5*cos(t)*sin(t))*sin(s);
+    return /*3*sin(t);//(t*t - s*s)/3.;//2*t/*/3*sin(t/2.)*sin(s)+3*cos(t/2.)*sin(2*s);//(2./15.)*(3+5*cos(t)*sin(t))*sin(s);
 }
 
 double polynom(double y,double *x,double *m,int i) { // for interpolation
@@ -104,10 +108,10 @@ double polynom(double y,double *x,double *m,int i) { // for interpolation
 
 static void DrawWindowContent (double* x, int* n, double a, double b) {
     
-    char s[128],str[128];
-    int j; double tmp;
-    double *m, stp, (*fun[NMAX])(double, double), (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
-    //unsigned long color[NMAX];//double X[NMAX],Y[NMAX];
+    char s[128], str[128];
+    int j, nFaces; double tmp; Face faces[100]; FILE *fi;
+    double stp, (*fun[NMAX])(double, double), (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
+    
     double dx = EPS;
     
     SetFont(HELVETICA16);
@@ -118,13 +122,11 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
         SetLineWidth(1);
         WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
         WSetColor(LIGHTGREEN);
-        for(int i = 0; i < 9; i++) DrawArc( 193 + 3*i, 170, 50 + i*(20 + 2*i), 50 + i*(20 + 2*i), 0, 360*64 );
+        for(int i = 0; i < 9; i++) DrawArc(193 + 3*i, 170, 50 + i*(20 + 2*i), 50 + i*(20 + 2*i), 0, 360*64 );
         WDrawString("This is 2D mode", 100, 500);
         SetFont(HELVETICA12);
-        WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw interpolation with Hermite polynomial; ' 2 ' -- draw interpolation with spline", 100, 525);
+        WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw interpolation with Hermite polynomial; ' 2 ' -- draw interpolation with spline",100, 525);
         WDrawString("' 3 ' -- draw graph; ' 4 ' -- draw parametric curve (x(t), y(t))", 100, 550);
-        xc = (xmax - xmin)/width;
-        yc = (ymax - ymin)/height;
     } else {
         switch(mode) {
             case 1:
@@ -136,7 +138,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 break;
             default:
                 break;
-        } dtoa(a,s); dtoa(b,str);
+        }
     if(key_1 == 1) { if(*n<NMAX) {
         switch(mode) {
             case 1:
@@ -187,8 +189,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     DrawAxes2D();
         
     stp = STEP * (ymax - ymin)/2;
-    if(key_7 == 1) DrawGrid();
-    if(variant != 4) {
+    DrawGrid(key_7);
+    if(variant != 4 && variant != 5) {
     SetLineWidth(0);
         if(a > xmin && a < xmax) {
             DrawLine (a, stp, a, -stp);
@@ -209,11 +211,9 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 DrawLine (x[*n - 1], 0, x[*n - 1], f(x[*n - 1]));
                 SetLineStyle(SOLID);
             }
-        }
+        } dtoa(a,s); dtoa(b,str);
         if(a > xmin && a < xmax) WDrawString (s, invmap(a - 1.1*stp, -1.9*stp).x , invmap(a - 1.1*stp, -1.9*stp).y);
         if(b > xmin && b < xmax) WDrawString (str, invmap(b - 1.1*stp, -1.9*stp).x , invmap(b - 1.1*stp, -1.9*stp).y);
-        SetFont(HELVETICA12);
-        itoa(*n,s); scat("Number of interpolation nodes = ", s, 32, str); WDrawString(str, 20, 20);
         WSetColor (LIGHTGREEN); SetLineWidth(0);
         for (int i = 0; i < *n - 1; i++) {
                 if(i > 0 && x[i] > xmin && x[i] < xmax && key_5 == 1) {
@@ -225,42 +225,59 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     SetLineStyle(SOLID);
                 }
             }
-        } SetLineWidth(4);
-        if(key_6 == 0 && variant != 4) DrawGraph2D(f, a, b);
+        }
+        SetFont(HELVETICA16);
+        itoa(*n,s); scat("Number of interpolation nodes = ", s, 32, str); WDrawString(str, 20, 20);
+        SetLineWidth(4);
+        if(key_6 == 0 && variant != 4 && variant != 5) DrawGraph2D(f, a, b);
         switch (variant) {
             case 1:
-                m = interpH(x, *n);
+                interpH(x, *n, m);
                 WSetColor (BLUE);
                 break;
             case 2:
-                m = interpS(x, *n);
+                interpS(x, *n, m);
                 WSetColor (MAGENTA);
                 break;
             case 4:
                 parf[0] = parx2D; parf[1] = pary2D;
                 if(key_6 == 0) DrawParametric2D(parf, 0, 2*PI);
                 break;
-        }  if(variant != 3 && variant != 4) {
+            case 5:
+                DrawPoint(invmap(1,0).x, invmap(1,0).y, 4);
+                switch (key_10) {
+                    case 1:
+                        WDrawString("Equation: -u'' + 6u = exp(x)", 20, 40);
+                        break;
+                    case 2:
+                        WDrawString("Equation: -u'' + 6u = exp(x/2)", 20, 40);
+                        break;
+                    case 3:
+                        WDrawString("Equation: -u'' + 6u = exp(x^2)", 20, 40);
+                        break;
+                }
+                solveEq(key_10, *n, pt);
+                DrawLinear(pt, *n);
+                break;
+        }  if(variant != 3 && variant != 4 && variant != 5) {
             for (int i = 0; i < *n - 1; i++) {
                 for(double t = x[i]; t < x[i + 1]; t += dx) {
                     if(t > xmin && t < xmax && polynom(t, x, m, i) > ymin && polynom(t, x, m, i) < ymax &&
                        t + dx > xmin && t + dx < xmax && polynom(t + dx, x, m, i) > ymin && polynom(t + dx, x, m, i) < ymax)
                         DrawLine(t, polynom(t, x, m, i), t + dx, polynom(t + dx, x, m, i));
                 }
-            } free(m);
-        }
+            }
+        } 
   }
     } else {
         if(variant == 0 || variant == 4) {
             SetLineWidth(1);
             WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
             WSetColor(LIGHTGREEN);
-            for(int i = 0; i < 9; i++) DrawArc( 193+3*i, 170, 50+i*(20+2*i), 50+i*(20+2*i), 0,360*64);
+            for(int i = 0; i < 9; i++) DrawArc(193+3*i, 170, 50+i*(20+2*i), 50+i*(20+2*i), 0,360*64);
             WDrawString("This is 3D mode", 100, 500);  SetFont(HELVETICA12);
             WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw 3D graph z(x,y); ' 2 ' -- draw 3D parametric curve (x(t), y(t), z(t))", 100, 525);
             WDrawString("' 3 ' -- draw 3D parametric graph (x(t, s), y(t, s), z(t, s))", 100, 550);
-            xc = (xmax-xmin)/width;
-            yc = (ymax-ymin)/height;
         } else {
             if(key_2 != 0) {
                 xshift(key_2, SHIFT);  key_2 = 0;;
@@ -309,9 +326,23 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             fun[0] = u; fun[1] = w; fun[2] = z;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
+            fi = fopen("data.txt", "r");
+            fscanf(fi,"%d",&nFaces);
+            for (int i = 0; i < nFaces; i++) {
+                fscanf(fi,"%d",&faces[i].n);
+                for (int k = 0; k < faces[i].n; k++) {
+                    fscanf(fi,"%lf",&faces[i].vertex[0][k]);
+                    fscanf(fi,"%lf",&faces[i].vertex[1][k]);
+                    fscanf(fi,"%lf",&faces[i].vertex[2][k]);
+                    faces[i].vertex[0][k] *= 3;
+                    faces[i].vertex[1][k] *= 1./3;
+                    faces[i].vertex[2][k] *= 1./3;
+                }
+            } /*printf("%f, %f, %f\n", faces[0].vertex[0][2], faces[0].vertex[1][2], faces[0].vertex[2][2]);*/ fclose(fi);
             if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
             if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, PI, 0, 2*PI, key_5, key_8);
+            if(key_6 == 0 && variant == 5) DrawPolytope(faces, nFaces);
         }
     }
 }
@@ -338,10 +369,16 @@ static int KeyPressFunction (int nKeySym) {
         case XK_4:
             variant = 4;
             break;
-        case XK_Shift_L:
+        case XK_F5:
+        case XK_5:
+            variant = 5;
+            break;
+        case XK_B:
+        case XK_b:
             key_1 = -1;
             break;
-        case XK_Shift_R:
+        case XK_N:
+        case XK_n:
             key_1 = 1;
             break;
         case XK_Right:
@@ -402,15 +439,15 @@ static int KeyPressFunction (int nKeySym) {
                 variant = 0; key_1 = 0; key_2 = 0; key_3 = 0; key_4 = 0;
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
                 key_8 = 0; key_9 = 0;
-                
-                xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
+                xc = yc = INIT_SCALE;
+                SetSize();//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
             }
             else { dim = 2;
                 variant = 0; key_1 = 0; key_2 = 0; key_3 = 0; key_4 = 0;
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
                 key_8 = 0; key_9 = 0;
-                
-                xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
+                xc = yc = INIT_SCALE;
+                SetSize();//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
             }
             break;
         case XK_8:
@@ -418,6 +455,11 @@ static int KeyPressFunction (int nKeySym) {
             break;
         case XK_9:
             mode = 3;
+            break;
+        case XK_Tab:
+            if(key_10 < 3) key_10++;
+            else key_10 = 1;
+            //printf("%d, %d\n", key_10, variant);
             break;
         case XK_0:
             variant = 0;
