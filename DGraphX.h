@@ -84,6 +84,15 @@ typedef struct {
     int n;
 } Face;
 
+typedef struct {
+    double x;
+    double y;
+    double z;
+    double t;
+    int data;
+    int data_1;
+} vertex;
+
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), double*, int*,double,double);
 
@@ -99,7 +108,7 @@ void WFillPolygon (XPoint * points, int num);
 void DrawArc(int ,int , unsigned int, unsigned int, int, int);
 void DrawLine(double,double,double,double);
 void DrawAxes2D();
-void DrawAxes();
+void DrawAxes(int *n);
 void DrawGrid(int mode);
 void scale(int mode, double a, double b, double lambda);
 void xshift(int mode, double valueOfShift);

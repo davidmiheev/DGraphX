@@ -48,7 +48,7 @@ double mypow(double x, int n) {
 // ================ functions for drawing (input data) ===================
 
 double f(double x) { // function for draw by DrawGraph2D
-    return sin(x);
+    return 10./x/x-9./x;//sin(x);
 }
 
 double df(double x) { // derivative of f(x)
@@ -73,8 +73,8 @@ double w(double x, double y) { // function for DrawGraph3DX
     return sin(x*y);
 }
 
-double z(double x, double y) { // function for DrawGraph3DX
-    return 4*sqrt((x-1)*(x-1)+y*y) - 1;
+double v(double x, double y) { // function for DrawGraph3DX
+    return 3*exp(-x*x/2.-2*y*y);//4*sqrt((x-1)*(x-1)+y*y) - 1;
 }
 
 double curvex(double t) { // x-component for ParametricCurve3D
@@ -321,9 +321,9 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                         break;
                 } key_3 = 0;
             } VectorLight(cos(K*DALPHA*iter), 0, sin(K*DALPHA*iter));
-            if(key_5 == 1) DrawAxes();
+            //if(key_5 == 1) DrawAxes();
             SetShadingColor(GREEN);
-            fun[0] = u; fun[1] = w; fun[2] = z;
+            fun[0] = v; fun[1] = w; fun[2] = u;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
             fi = fopen("data.txt", "r");
@@ -339,9 +339,9 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     faces[i].vertex[2][k] *= 1./3;
                 }
             } /*printf("%f, %f, %f\n", faces[0].vertex[0][2], faces[0].vertex[1][2], faces[0].vertex[2][2]);*/ fclose(fi);
-            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
+            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 3);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
-            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, PI, 0, 2*PI, key_5, key_8);
+            if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, 2*PI, 0, 2*PI, key_5, key_8);
             if(key_6 == 0 && variant == 5) DrawPolytope(faces, nFaces);
         }
     }

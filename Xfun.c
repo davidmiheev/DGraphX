@@ -257,10 +257,13 @@ void WFillTriangle (int x_1, int y_1, int x_2, int y_2, int x_3, int y_3) {
 }
 
 void WFillPolygon (XPoint * points, int num) {
+    int key = 0;
     for (int i = 0; i < num; i++) {
         points[i].x += x_0;
         points[i].y += y_0;
+        if(!(points[i].x > 0 && points[i].x < PIXMAP_SIZE && points[i].y > 0 && points[i].y < PIXMAP_SIZE)) key = 1;
     }
+  if(key == 0)
   XFillPolygon (prDisplay, draw, prGC, points, num, Convex, CoordModeOrigin);
 }
    /* FillSolid, FillTiled, FillStippled, FillOpaeueStippled. */

@@ -13,6 +13,7 @@
 #define MAX_OUTPUT_SIZE 5
 
 static double tmp[3];
+static double t;
 
 void PrintMatrix(int n, double* A) {
     int i, j, nPrint;
@@ -103,11 +104,12 @@ int InvMatrix(int n, double* A, double* B) {
 }
 
 double inner(double *v, double* u, int n) {
-    double res = 0.;
+    //double res = 0.;
+    t = 0.;
     for (int i = 0; i < n; i++) {
-        res += v[i]*u[i];
+        t += v[i]*u[i];
     }
-    return res;
+    return t;
 }
 
 void InitV(double *v, double *u) {
@@ -126,12 +128,31 @@ void MxV ( double* V, double* v) {
 }
 
 void MxM ( double* V, double* N ) {
-    double t[3];
+    //double t[3];
     for (int i = 0; i < 3 ; i++) {
-        t[0] = m(i,0); t[1] = m(i,1); t[2] = m(i,2);
+        tmp[0] = m(i,0); tmp[1] = m(i,1); tmp[2] = m(i,2);
         for(int j = 0; j < 3; j++)
-            m(i,j) = t[0]*n(0,j) + t[1]*n(1,j) + t[2]*n(2,j);//m(i,j) = t(i,0)*n(0,j) + t(i,1)*n(1,j) + t(i,2)*n(2,j);
+            m(i,j) = tmp[0]*n(0,j) + tmp[1]*n(1,j) + tmp[2]*n(2,j);//m(i,j) = t(i,0)*n(0,j) + t(i,1)*n(1,j) + t(i,2)*n(2,j);
     }
+}
+
+void intxvec(double c, double* v, double* res) {
+    for (int i = 0; i < 3; i++)
+    res[i] = c*v[i];
+    //return res;
+}
+
+void plus(double *v, double *u, double* res) {
+    
+    for (int i = 0; i < 3; i++)
+        res[i] = v[i] + u[i];
+}
+
+void minus(double *v, double *u, double* res) {
+    
+    for (int i = 0; i < 3; i++)
+        res[i] = v[i] - u[i];
+    
 }
 
 void Init(double *v, double x, double y, double z) {
@@ -148,8 +169,16 @@ void cross(double* a, double* b, double *c) {
 }
 
 void normalize(double* a, int n) {
-    double l = sqrt(inner(a,a,n));
+    t = sqrt(inner(a,a,n));
     for (int i = 0; i < n; i++) {
-        a[i] /= l;
+        a[i] /= t;
     }
+}
+
+void reflect(double *a, double *b, double* res) {
+    normalize(b,3); //printf("%f\n",inner(a, b, 3));
+    intxvec(inner(a, b, 3), b, res);
+    minus(res, a, res);
+    intxvec(2, res, res);
+    plus(a, res, res);
 }
