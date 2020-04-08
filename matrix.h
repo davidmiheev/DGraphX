@@ -28,3 +28,5 @@ void cross(double* a, double* b, double *c);
 void normalize(double *a, int n);
 
 void reflect(double* a, double* b, double *c);
+
+double signed_area(Point a, Point b, Point c);

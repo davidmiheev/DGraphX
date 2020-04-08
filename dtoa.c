@@ -27,17 +27,23 @@ void reverse(char s[])
     }
 }
 
-void dtoa(double x, char s[]) {
-    int i = 0, n = (int) 100*x, sign = n;
+void dtoa(double x, char s[], int ndeg) {
+    int i = 0, n, sign, k = 0, deg = 1;
+    for(int j = 0; j < ndeg; j++) deg *= 10;
+    n = (int) deg*x; sign = n;
+    for(int j = 1; j <= deg; j *= 10) {
+        if((int) (j*x) == 0) k++;  //printf("%d\n", (int) (j*x));
+    }
     if (n < 0) n = -n;
     do {
         s[i++] = n % 10 + '0';
     } while ((n /= 10) > 0);
+    for(int j = 0; j < k; j++) s[i++] = '0';
     if (sign < 0)
         s[i++] = '-';
     s[i] = '\0';
     reverse(s);
-    addpoint(s,2);
+    addpoint(s,ndeg);
 }
 
 void itoa(int n, char s[]) {

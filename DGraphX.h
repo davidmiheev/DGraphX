@@ -53,7 +53,7 @@ typedef struct {
 #define DASH LineOnOffDash
 //=============================
 
-#define INIT_SCALE 0.02
+#define INIT_SCALE 0.01
 
 //======= Global data =========
 extern COLORS rColors;
@@ -93,6 +93,13 @@ typedef struct {
     int data_1;
 } vertex;
 
+typedef struct {
+    double vert[4][3];
+    double normal[3];
+    double z;
+    int n;
+} polygon;
+
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), double*, int*,double,double);
 
@@ -120,6 +127,8 @@ void DrawGraph2D(double f(double), double a, double b);
 
 void DrawParametric2D(double (*parf[]) (double), double it, double ft);
 
+void DrawLinear3D(double* a, int n, unsigned long Color);
+
 void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long, unsigned long,
                   int, int, int);
 
@@ -131,6 +140,8 @@ void ParametricGraph3D(double (*parfun[]) (double, double),
 void DrawPolytope(Face *f, int n);
 
 void SetSize();
+
+void SetCentre(double x, double y, double z);
 void SetLineWidth(int);
 
 void SetLineStyle(int style);
@@ -148,6 +159,7 @@ XPoint invmap(double x, double y);
 Point map(int x, int y);
 Point ObliqueProjection ( double x, double y, double z );
 void ChangeCameraPosition(double valueOfShift);
+void ChangeScreenPosition(double valueOfShift);
 void SetShadingColor(unsigned long color);
 
 void VectorLight(double x, double y, double z);
@@ -160,6 +172,8 @@ void IdMatrix();
 void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size);
 int WGetColor (unsigned int, unsigned int, unsigned int, unsigned long*);
 void QueryColor(XColor *color);
+
+void InitKey();
 
 #define X11_ERR_1	1
 #define X11_ERR_2	2

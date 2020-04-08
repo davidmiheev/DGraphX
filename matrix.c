@@ -182,3 +182,7 @@ void reflect(double *a, double *b, double* res) {
     intxvec(2, res, res);
     plus(a, res, res);
 }
+
+double signed_area(Point a, Point b, Point c)  {
+    return ((b.x-a.x) * (c.y-a.y) - (b.y-a.y) * (c.x-a.x));
+}

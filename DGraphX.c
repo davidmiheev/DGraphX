@@ -5,6 +5,7 @@
 #include "DGraphX.h"
 #include "Interp2D.h"
 #include "matrix.h"
+#include <time.h>
 
 #define m(ix,jx) m[4*(ix)+jx]
 
@@ -30,7 +31,11 @@ static int key_7 = 3;
 static int key_8 = 1;
 static int key_9 = 0;
 static int key_10 = 1;
+static int key_11 = 1;
+static int key_12 = 1;
+static int ngrid = 10;
 static int iter = 0;
+static int niter;
 static int mode = 1;
 static int dim = 3;
 static int count = 0;
@@ -38,6 +43,8 @@ static int count1 = 0;
 static double m[4*NMAX];
 //static double d[NMAX];
 static Point pt[NMAX];
+static double fval[100000];
+static clock_t t;
 
 double mypow(double x, int n) {
     double res = 1.;
@@ -102,6 +109,18 @@ double parz(double t, double s) { // z-component for ParametricGraph3D
 
 double polynom(double y,double *x,double *m,int i) { // for interpolation
     return m(i,0) + m(i,1)*(y-x[i]) + m(i,2)*(y-x[i])*(y-x[i]) + m(i,3)*(y-x[i])*(y-x[i])*(y-x[i]);
+}
+
+double solution(int i, int j, int n) {
+    return sin(2*PI*j/(n-1))*sin(2*PI*i/(n-1))/2;
+}
+void init_val() {
+for(int i = 0; i < ngrid; i++) {
+    for(int j = 0; j < ngrid; j++) {
+        if(i != 10 && j!= 10) fval[i*ngrid + j] = 0;
+        else fval[i*ngrid + j] = sin(2*PI*j/(ngrid-1))*sin(2*PI*i/(ngrid-1))/2;
+    }
+ }
 }
 
 //==========================================================================
@@ -211,7 +230,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 DrawLine (x[*n - 1], 0, x[*n - 1], f(x[*n - 1]));
                 SetLineStyle(SOLID);
             }
-        } dtoa(a,s); dtoa(b,str);
+        } dtoa(a,s,2); dtoa(b,str,2);
         if(a > xmin && a < xmax) WDrawString (s, invmap(a - 1.1*stp, -1.9*stp).x , invmap(a - 1.1*stp, -1.9*stp).y);
         if(b > xmin && b < xmax) WDrawString (str, invmap(b - 1.1*stp, -1.9*stp).x , invmap(b - 1.1*stp, -1.9*stp).y);
         WSetColor (LIGHTGREEN); SetLineWidth(0);
@@ -270,7 +289,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
         } 
   }
     } else {
-        if(variant == 0 || variant == 4) {
+        if(variant == 0) {
             SetLineWidth(1);
             WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
             WSetColor(LIGHTGREEN);
@@ -280,11 +299,13 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             WDrawString("' 3 ' -- draw 3D parametric graph (x(t, s), y(t, s), z(t, s))", 100, 550);
         } else {
             if(key_2 != 0) {
-                xshift(key_2, SHIFT);  key_2 = 0;;
+                scale(key_2, -1, 1, LAMBDA);  key_2 = 0;;
             }
             if(key_4 != 0) {
                 //if(count1 + key_2 < 9 && count1 + key_2 > -9) {
-                ChangeCameraPosition(key_4 * -0.5);/*scale(key_2, a, b, LAMBDA);  count1 += key_2; }*/   key_4 = 0;
+                if(key_12 == 1) ChangeCameraPosition(key_4 * -0.5);/*scale(key_2, a, b, LAMBDA);  count1 += key_2; }*/
+                if(key_12 == 2) ChangeScreenPosition(key_4 * -0.5);
+                key_4 = 0;
             } WSetColor (LIGHTGREEN);
             if(count == 0) {
                 InitialPosition(); //IdMatrix();
@@ -323,6 +344,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             } VectorLight(cos(K*DALPHA*iter), 0, sin(K*DALPHA*iter));
             //if(key_5 == 1) DrawAxes();
             SetShadingColor(GREEN);
+            SetCentre(0,0,0);
             fun[0] = v; fun[1] = w; fun[2] = u;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
@@ -334,15 +356,56 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     fscanf(fi,"%lf",&faces[i].vertex[0][k]);
                     fscanf(fi,"%lf",&faces[i].vertex[1][k]);
                     fscanf(fi,"%lf",&faces[i].vertex[2][k]);
-                    faces[i].vertex[0][k] *= 3;
-                    faces[i].vertex[1][k] *= 1./3;
-                    faces[i].vertex[2][k] *= 1./3;
+                    //faces[i].vertex[0][k] *= 3;
+                    //faces[i].vertex[1][k] *= 1./3;
+                    //faces[i].vertex[2][k] *= 1./3;
                 }
             } /*printf("%f, %f, %f\n", faces[0].vertex[0][2], faces[0].vertex[1][2], faces[0].vertex[2][2]);*/ fclose(fi);
-            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 3);
+            if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
             if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, 2*PI, 0, 2*PI, key_5, key_8);
-            if(key_6 == 0 && variant == 5) DrawPolytope(faces, nFaces);
+            if(key_6 == 0 && variant == 4) DrawPolytope(faces, nFaces);
+            SetCentre(0.5,0.5,0);
+            switch (key_10) {
+                case 1:
+                    SetParameter(1);
+                    break;
+                case 2:
+                    SetParameter(0.1);
+                    break;
+                case 3:
+                    SetParameter(0.01);
+                    break;
+            }
+            if(variant == 5) { SetShadingColor(GREEN);
+                for(int i = 0; i < ngrid; i++) {
+                    for(int j = 0; j < ngrid; j++) {
+                        fval[i*ngrid + j] = solution(i, j, ngrid);
+                    }
+                } DrawLinear3D(fval, ngrid, BLUE);  WSetColor(LIGHTGREEN);
+                itoa(ngrid,s); scat("[Solution] Size of grid: ", s, 25, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
+                WDrawString(s, 20, 20);
+            }
+            if(variant == 6) { SetShadingColor(BLUE);
+                if(key_11 == 1) { init_val(); t = clock(); SeidelGauss(fval, ngrid, &niter); t = clock() - t; key_11 = 0; }
+                DrawLinear3D(fval, ngrid, BLUE);  WSetColor(LIGHTGREEN);
+                //printf("%f\n", accuracy(solution, fval, ngrid));
+                itoa(ngrid,s); scat("[Seidel Gauss] Size of grid: ", s, 29, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
+                WDrawString(s, 20, 20);
+                dtoa(accuracy(solution, fval, ngrid), s, 5); scat("error: ", s, 7, str); WDrawString(str, 20, 40);
+                itoa(niter, s); scat("number of iterations: ", s, 22, str); WDrawString(str, 20, 60);
+                dtoa((double) t/CLOCKS_PER_SEC, s, 5); scat("time: ", s, 6, str); scat(str, " sec", strlen(str), s); WDrawString(s, 20, 80);
+            }
+            if(variant == 7) { SetShadingColor(RED);
+                if(key_11 == 1) { init_val(); t = clock(); RichardsonIter(fval, ngrid, 2, 8, &niter); t = clock() - t; key_11 = 0; }
+                DrawLinear3D(fval, ngrid, BLUE); WSetColor(LIGHTGREEN);
+                itoa(ngrid,s); scat("[Richardson iter] Size of grid: ", s, 32, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
+                WDrawString(s, 20, 20);
+                dtoa(accuracy(solution, fval, ngrid), s, 5); scat("error: ", s, 7, str); WDrawString(str, 20, 40);
+                itoa(niter, s); scat("number of iterations: ", s, 22, str); WDrawString(str, 20, 60);
+                dtoa((double) t/CLOCKS_PER_SEC, s, 5); scat("time: ", s, 6, str); scat(str, " sec", strlen(str), s); WDrawString(s, 20, 80);
+            }
+            
         }
     }
 }
@@ -356,22 +419,48 @@ static int KeyPressFunction (int nKeySym) {
         case XK_F1:
         case XK_1:
             variant = 1;
+            InitKey();
             break;
         case XK_F2:
         case XK_2:
             variant = 2;
+            InitKey();
             break;
         case XK_F3:
         case XK_3:
             variant = 3;
+            InitKey();
             break;
         case XK_F4:
         case XK_4:
             variant = 4;
+            InitKey();
             break;
         case XK_F5:
         case XK_5:
             variant = 5;
+            InitKey();
+            break;
+        case XK_F6:
+        case XK_6:
+            variant = 6;
+            key_11 = 1;
+            InitKey();
+            break;
+        case XK_F7:
+        case XK_7:
+            variant = 7;
+            key_11 = 1;
+            InitKey();
+            break;
+        case XK_plus :
+        case XK_equal :
+            if(ngrid < 100) ++ngrid;
+            key_11 = 1;
+            break;
+        case XK_minus :
+            if(ngrid > 10) --ngrid;
+            key_11 = 1;
             break;
         case XK_B:
         case XK_b:
@@ -412,6 +501,14 @@ static int KeyPressFunction (int nKeySym) {
         case XK_V:
         case XK_v:
             key_2 = 1;
+            break;
+        case XK_S:
+        case XK_s:
+            key_12 = 1;
+            break;
+        case XK_F:
+        case XK_f:
+            key_12 = 2;
             break;
         case XK_X:
         case XK_x:
@@ -459,6 +556,7 @@ static int KeyPressFunction (int nKeySym) {
         case XK_Tab:
             if(key_10 < 3) key_10++;
             else key_10 = 1;
+            key_11 = 1;
             //printf("%d, %d\n", key_10, variant);
             break;
         case XK_0:

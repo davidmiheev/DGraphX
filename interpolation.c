@@ -2,13 +2,19 @@
 #include "Interp2D.h"
 #define m(i,j) m[4*i+j]
 #define N_ITER 100
+#define PI 3.14159265358
 #define min(a,b) (a) < (b) ? (a) : (b)
+
+static int permut[5] = {5, 2, 4, 1, 3};
+static int tmp[5];
+static double coeff;
 
 double shoot(int mode, double par, int n, Point *pt);
 
-/*double f(double x) {
-    return sin(x);
-}*/
+
+double func(double x, double y) {
+    return 20*sin(20*x*y);//10;//(coeff*8*PI*PI + 1 + sin(x*x))*sin(2*PI*x)*sin(2*PI*y)/2;//20*sin(20*x*y);
+}
 
 double r(double y, double x) {
     return (f(y)-f(x))/(y-x);
@@ -107,6 +113,105 @@ double shoot(int mode, double par, int n, Point *pt) {
      pt[n-2].x = ((double) (n-2))/(n-1); pt[n-2].y = tmp[0];
     pt[n-1].x = 1; pt[n-1].y = tmp[1];
     return res;
+}
+
+void SetParameter(double eps) {
+    coeff = eps;
+}
+
+double diff(double * a, double * b, int i, int j, int n) {
+    double res, h = 1./(n-1);
+    res = b[(i-1)*(n-2)+j-1] - (4 + h*h*(1+sin((i%(n-1))*(i%(n-1))*h*h))/coeff)*a[i*n+j] + a[i*n+j-1] + a[i*n+j+1] + a[(i-1)*n + j] + a[(i+1)*n + j];
+    return  res;
+}
+
+int err(double * a, double * b, double eps, int n) {
+    double res = 0.;
+    for(int i = 1; i < n - 1; i++) {
+        for(int j = 1; j < n - 1; j++) {
+            res += diff(a,b,i,j,n)*diff(a,b,i,j,n)/(n-1);
+        }
+    } //printf("%f\n", res);
+    return (res > eps);
+}
+
+double accuracy(double (*sol)(int, int, int), double* a, int n) {
+    double res = fabs(sol(0, 0, n) - a[0]);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if(res < fabs(sol(i, j, n) - a[i*n +j])) res = fabs(sol(i, j, n) - a[i*n + j]);
+        }
+    }
+    return res;
+}
+
+void permutation(int *a) {
+    for (int i = 0; i < 5; i++) tmp[i] = a[i];
+    for (int i = 0; i < 5; i++) a[i] = tmp[permut[i]-1];
+}
+
+void RichardsonIter(double *a, int n, double min, double max, int *niter ) {
+    double h = 1./(n-1); int k = 0, d[5] = {1, 9, 3, 7, 5};//{3, 4, 5, 1, 2};;
+    double* b = (double*) malloc((n-2)*(n-2)*sizeof(double));
+    double c[5];
+    //permutation(d);
+    for (int i = 0; i < 5; i++) {
+        c[i] = 2./(max + min + (max-min)*cos(PI*(d[i])/10.));
+    }
+    for (int i = 0; i < n - 2; i++) {
+        for (int j = 0; j < n - 2; j++) {
+            b[k] = h*h*func((j+1)*h,(i+1)*h)/coeff;
+            k++;
+        }
+    } k = 0;
+    while(err(a,b, 1e-10, n) && k < 1000) {
+        for(int l = 0; l < 5; l++) {
+            for(int i = 1; i < n - 1; i++) {
+                for(int j = 1; j < n - 1; j++) {
+                    a[i*n + j] += c[l%5]*diff(a,b,i,j,n);
+                }
+            }
+        } k++;
+    } *niter = k*5;//printf("%d\n", k);
+    /*for (int i = 0; i < n*n; i++) {
+        printf("%f\n", a[i]);
+    }*/
+    free(b);
+}
+
+void SeidelGauss(double *a, int n, int *niter) {
+    double h = 1./(n-1); int k = 0;
+    double* b = (double*) malloc((n-2)*(n-2)*sizeof(double));
+    double* d = (double*) malloc((n-2)*(n-2)*sizeof(double));
+    for (int i = 0; i < n - 2; i++) {
+        for (int j = 0; j < n - 2; j++) {
+            b[k] = h*h*func((j+1)*h,(i+1)*h)/coeff;
+            k++;
+        }
+    } k = 0;
+    while(err(a,b,1e-10,n) && k < 10000) { k++;
+        for(int i = 1; i < n - 1; i++) {
+            for(int j = 1; j < n - 1; j++) {
+                d[(i-1)*(n-2)+j-1] = diff(a,b,i,j,n);
+            }
+        }
+        for(int i = 0; i < (n - 2)*(n - 2); i++) {
+            if(i < n - 2) {
+                if(i == 0) d[i] /= (4 + (1+sin(h*h))*h*h/coeff);
+                else d[i] = (d[i]+d[i-1])/(4 + (1 + sin((i%(n-2) + 1)*(i%(n-2) + 1)*h*h))*h*h/coeff);
+            }
+            else { d[i] = (d[i] + d[i-1] + d[i - (n-2)])/(4 + (1 + sin((i%(n-2) + 1)*(i%(n-2) + 1)*h*h))*h*h/coeff); }
+        }
+        for (int i = 1; i < (n-1); i++) {
+            for(int j = 1; j < n-1; j++) {
+                a[i*n + j] += d[(i-1)*(n-2)+j-1];
+            }
+        }
+    } *niter = k;//printf("%d\n", k);
+    /*for (int i = 0; i < n*n; i++) {
+        printf("%f\n", a[i]);
+    }*/
+    free(b); free(d);
 }
 
 /*void solveEq(int mode, int n, Point *pt) {
