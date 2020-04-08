@@ -1,4 +1,4 @@
-// DGraphX -- free grapher, version 1.0
+// DGraphX -- free grapher, version 0.1
 //
 // David Mikheev 7/18/19
 
