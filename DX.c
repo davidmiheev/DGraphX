@@ -1,6 +1,7 @@
 // Creating 2D and 3D graphics
 //
 // David Mikheev 7/18/19
+// If there can be an X-axis and a Y-axis, why not a Z-axis?
 
 #include "DGraphX.h"
 #include "matrix.h"
@@ -32,8 +33,6 @@
 #define EPS_Y 5e-2
 
 #define BUF_SIZE 1000000
-
-// If there can be an X-axis and a Y-axis, why not a Z-axis?
 
 double xc = INIT_SCALE, yc =  INIT_SCALE;
 
@@ -280,7 +279,7 @@ void DrawLineX(Point * pts, XPoint *pt) {
     invmapX(pts, pt, 2);
     WDrawLine(pt[0].x, pt[0].y, pt[1].x, pt[1].y);
 }
-//============ colors (to improve) ==========
+//============ colors ==========
 void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size) {
     unsigned long tmpx;
     XColor fc, sc, w;
@@ -299,7 +298,7 @@ void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor
         }
     }
 }
-//=============================
+
 void elemRotation(int Axis, double angle, int mode) {
     double N[9];
     MatrixId(N);
