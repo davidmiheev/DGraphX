@@ -1,4 +1,4 @@
-// DGraphX -- free grapher, version 1.0 (also can draw interpolation of function of one variable)
+// DGraphX -- free grapher, version 0.1
 //
 // David Mikheev 7/18/19
 
