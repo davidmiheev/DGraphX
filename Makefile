@@ -9,14 +9,14 @@ OPTIMAZE_SPECIFIC =
 OPTIMAZE        = $(OPTIMAZE_COMMON) $(OPTIMAZE_SPECIFIC)
 
 WARNINGS        = -W -Wall
-INCLUDE_DIR     = -I. -I/opt/X11/include 
-CFLAGS          = -c $(DEBUG) $(OPTIMAZE) $(WARNINGS) $(INCLUDE_DIR) 
+#INCLUDE_DIR     = -I. -I/opt/X11/include 
+CFLAGS          = -c $(DEBUG) $(OPTIMAZE) $(WARNINGS)
 
-LIB_DIR         = -L. -L/opt/X11/lib
+#LIB_DIR         = -L. -L/opt/X11/lib
 LIB             = -lX11 
 LDFLAGS         = $(DEBUG)
 
-OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o interpolation3d.o matrix.o
+OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o  matrix.o
 
 all:    $(NAME)
 
@@ -43,3 +43,4 @@ DX.o		: DX.c DGraphX.h matrix.h
 matrix.o	: matrix.c DGraphX.h matrix.h
 
 #-------------------------------------------------------------------------------
+# $(INCLUDE_DIR) 

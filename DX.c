@@ -34,9 +34,11 @@
 
 #define BUF_SIZE 1000000
 
-double xc = INIT_SCALE, yc =  INIT_SCALE;
+double xc = INIT_SCALE, yc =  INIT_SCALE/10.;
 
-double xmin = 0, xmax = 0, ymin = 0, ymax = 0;
+double xmin = 0., xmax = 0., ymin = 0., ymax = 0.;
+
+static double xcent = 0, ycent = 0;
 
 static double M[9];// matrix: local object coord -> global static coord
 
@@ -81,9 +83,11 @@ static Pair z[BUF_SIZE];
 static vertex zm[BUF_SIZE];
 static polygon zb[BUF_SIZE];
 
-void SetSize() {
-    double xcent = (xmax+xmin)/2., ycent = (ymax+ymin)/2.;
-    xmin = xcent-width*xc/2.; 
+void SetSize(double a_xc, double a_yc) {
+    //printf("%lf %lf\n", xc, yc);
+    xc = a_xc; yc = a_yc;
+    xcent = (xmax+xmin)/2., ycent = (ymax+ymin)/2.;
+    xmin = xcent - width*xc/2.; 
     xmax = xcent + width*xc/2.; 
     ymin = ycent - height*yc/2.; 
     ymax = ycent + height*yc/2.;
@@ -105,18 +109,20 @@ XPoint invmap(double x, double y) {
     return pt;
 }
 
-void scale(int mode, double a, double b, double lambda) {
+void scale(int mode,  double lambda) {
     switch (mode) {
         case 1:
-            xmin = (b + a)/2 - lambda * ((b + a)/2 - xmin);
-            xmax = (b + a)/2 + lambda * (-(b + a)/2 + xmax);
-            ymin *= lambda; ymax *= lambda;
+            xmin = xcent - lambda * (xcent - xmin);
+            xmax = xcent + lambda * (-xcent + xmax);
+            ymin = ycent - lambda * (ycent - ymin); 
+            ymax = ycent + lambda * (-ycent + ymax);
             xc = (xmax - xmin)/width; yc = (ymax - ymin)/height;
             break;
         case -1:
-            xmin = (b + a)/2 - (1./lambda)*((b + a)/2 - xmin);
-            xmax = (b + a)/2 + (1./lambda)*(-(b + a)/2 + xmax);
-            ymin /= lambda; ymax /= lambda;
+            xmin = xcent - (1./lambda)*(xcent - xmin);
+            xmax = xcent + (1./lambda)*(-xcent + xmax);
+            ymin = ycent - (1./lambda)*(ycent - ymin); 
+            ymax = ycent + (1./lambda)*(-ycent + ymax);
             xc = (xmax - xmin)/width; yc = (ymax - ymin)/height;
             break;
     }
@@ -172,10 +178,11 @@ void SetShadingColor(unsigned long color) {
 }
 
 void DrawLinear(Point *pt, int n) {
-    pallette(RED, BLUE, 0, n - 1);
+    //pallette(RED, BLUE, 0, n - 1);
+    WSetColor (RED);
     SetLineWidth(4);
     for (int i = 0; i < n - 1; i++) {
-        WSetColor(cx(i, 0));
+        //WSetColor(cx(i, 0));
         DrawLine(pt[i].x, pt[i].y, pt[i + 1].x, pt[i + 1].y);
     }
 }
@@ -211,6 +218,7 @@ void DrawLine(double x1, double y1, double x2, double y2) {
 
 void DrawGrid(int mode) {
     double a = gridright, b = gridleft, c = gridup, d = griddown;
+    double k, dx, dy;
     SetLineWidth(0);
     if(gridright - gridleft > 2*(xmax - xmin) ||
        gridup - griddown > 2*(ymax - ymin))  {
@@ -236,10 +244,17 @@ void DrawGrid(int mode) {
     }
     }
     if(mode == 1) {
-    for (int i = (int) xmin; i <= (int) xmax ; i++)
-    { if(i != 0) DrawLine((double) i, ymin, (double) i, ymax); }
-    for (int i = (int) ymin; i <= (int) ymax; i++)
-    {   if(i != 0) DrawLine(xmin, (double) i, xmax, (double) i); }
+      //if(xc/yc < 1) { k = yc/xc; 
+        //dx = (xmax - xmin)/6;
+        for (double i =  xmin; i <= xmax ; i+=1)
+            { if(i != 0) DrawLine( i, ymin,  i, ymax); }
+      //}
+     //else {  k = xc/yc;
+         //dy = (ymax - ymin)/6;
+        for (double i =  ymin; i <= ymax; i+=1)
+            { if(i != 0) DrawLine(xmin, i, xmax, i); }
+     //}
+            
     }
      if(key_1 != 0) {
          switch (key_1 > 0) {

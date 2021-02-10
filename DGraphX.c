@@ -130,6 +130,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     char s[128], str[128];
     int j, nFaces; double tmp; Face faces[100]; FILE *fi;
     double stp, (*fun[NMAX])(double, double), (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
+    Point path[256];
     
     double dx = EPS;
     
@@ -138,6 +139,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     WFillRectangle (0, 0, width, height);
     if (dim == 2) {
     if(variant == 0) {
+        SetSize(INIT_SCALE, INIT_SCALE/10);
         SetLineWidth(1);
         WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
         WSetColor(LIGHTGREEN);
@@ -202,7 +204,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
         }
       } key_1 = 0;
     }
-    if(key_2 != 0)  { scale(key_2, a, b, LAMBDA); key_2 = 0; }
+    if(key_2 != 0)  { scale(key_2, LAMBDA); key_2 = 0; }
     if(key_3 != 0) { xshift(key_3, SHIFT);  key_3 = 0; }
     if(key_4 != 0) { yshift(key_4, SHIFT); key_4 = 0; }
     DrawAxes2D();
@@ -263,8 +265,9 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 if(key_6 == 0) DrawParametric2D(parf, 0, 2*PI);
                 break;
             case 5:
-                DrawPoint(invmap(1,0).x, invmap(1,0).y, 4);
-                switch (key_10) {
+                DrawPoint(invmap(10,0).x, invmap(10,0).y, 4);
+                DrawPoint(invmap(0,10).x, invmap(0,10).y, 4);
+                /*switch (key_10) {
                     case 1:
                         WDrawString("Equation: -u'' + 6u = exp(x)", 20, 40);
                         break;
@@ -275,8 +278,14 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                         WDrawString("Equation: -u'' + 6u = exp(x^2)", 20, 40);
                         break;
                 }
-                solveEq(key_10, *n, pt);
-                DrawLinear(pt, *n);
+                solveEq(key_10, *n, pt);*/
+                fi = fopen("PATHS.txt","r");
+                for(int i = 0; i < 168; ++i) {
+                    fscanf(fi, "%lf", &path[i].y);
+                    path[i].x = (1./24.)*i;
+                }   
+                DrawLinear(path, 168);//DrawLinear(pt, *n);
+                fclose(fi);
                 break;
         }  if(variant != 3 && variant != 4 && variant != 5) {
             for (int i = 0; i < *n - 1; i++) {
@@ -290,6 +299,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
   }
     } else {
         if(variant == 0) {
+            SetSize(INIT_SCALE, INIT_SCALE);
             SetLineWidth(1);
             WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
             WSetColor(LIGHTGREEN);
@@ -299,7 +309,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             WDrawString("' 3 ' -- draw 3D parametric graph (x(t, s), y(t, s), z(t, s))", 100, 550);
         } else {
             if(key_2 != 0) {
-                scale(key_2, -1, 1, LAMBDA);  key_2 = 0;;
+                scale(key_2, LAMBDA);  key_2 = 0;;
             }
             if(key_4 != 0) {
                 //if(count1 + key_2 < 9 && count1 + key_2 > -9) {
@@ -535,16 +545,17 @@ static int KeyPressFunction (int nKeySym) {
             if(dim == 2) { dim = 3;
                 variant = 0; key_1 = 0; key_2 = 0; key_3 = 0; key_4 = 0;
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
-                key_8 = 0; key_9 = 0;
-                xc = yc = INIT_SCALE;
-                SetSize();//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
+                key_8 = 1; key_9 = 0;
+                //xmin = 0, xmax = 0, ymin = 0, ymax = 0.;
+                //xc = yc = INIT_SCALE;
+                SetSize(INIT_SCALE, INIT_SCALE);//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
             }
             else { dim = 2;
                 variant = 0; key_1 = 0; key_2 = 0; key_3 = 0; key_4 = 0;
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
                 key_8 = 0; key_9 = 0;
-                xc = yc = INIT_SCALE;
-                SetSize();//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
+                //xc = yc = INIT_SCALE;
+                SetSize(INIT_SCALE, INIT_SCALE/10);//xmin = -8., xmax = 8., ymin = -6., ymax = 6.;
             }
             break;
         case XK_8:

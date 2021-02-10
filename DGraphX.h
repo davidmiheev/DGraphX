@@ -117,7 +117,7 @@ void DrawLine(double,double,double,double);
 void DrawAxes2D();
 void DrawAxes(int *n);
 void DrawGrid(int mode);
-void scale(int mode, double a, double b, double lambda);
+void scale(int mode, double lambda);
 void xshift(int mode, double valueOfShift);
 void yshift(int mode, double valueOfShift);
 
