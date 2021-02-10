@@ -139,7 +139,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double),
 
 void DrawPolytope(Face *f, int n);
 
-void SetSize();
+void SetSize(double a_xc, double a_yc);
 
 void SetCentre(double x, double y, double z);
 void SetLineWidth(int);
