@@ -16,7 +16,7 @@ LIB_DIR         = -L. -L/opt/X11/lib
 LIB             = -lX11 
 LDFLAGS         = $(DEBUG)
 
-OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o interpolation3d.o matrix.o
+OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o matrix.o
 
 all:    $(NAME)
 
