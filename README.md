@@ -28,6 +28,7 @@ Important keybord commands (program yet don't support mouse) for the 3D mode:
 * **C** key for zoom in, **V** key for zoom out.
 * You can also change the light source position: first press **l** key and change position of the light source with **<-** and **->** keys, then again press **l** key
 * You can also change the color method with **L** key (not **l** key)
+* To quit press **q**
 
 Important keybord commands (program yet don't support mouse) for the 2D mode:
 Coming soon...
