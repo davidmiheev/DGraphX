@@ -1,6 +1,6 @@
 // Creating 2D and 3D graphics
 //
-// David Mikheev 7/18/19
+// David Miheev 7/18/19
 // If there can be an X-axis and a Y-axis, why not a Z-axis?
 
 #include "DGraphX.h"
@@ -152,6 +152,7 @@ void InitCameraPosition(double pos, double focus) {
 void InitKey() {
     key = 0;
 }
+
 /*void InitScreenPosition(double pos) {
     screenPos = pos;
 }*/
@@ -542,7 +543,7 @@ void DrawLinear3D(double* a, int n, unsigned long Color) {
     pallette(Color, BLACK, 1, N_COLOR);
     VectorSight();
     if(key == 0)  InitCameraPosition(2, 1);
-    printf("cameraPos = %f\n", cameraPos);
+    printf("[DGraphX]:\tcameraPos = %f\n", cameraPos);
     for(int i = 0; i < n - 1; i++) {
         for(int j = 0; j < n - 1; j++) { //zb[k].n = 3;
             Init(zb[k].vert[0], j*h, i*h, a[i*n + j]);
@@ -601,7 +602,7 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     VectorSight();
     farY = a; nearY = b;
     if(key == 0)  InitCameraPosition(nearY + 5, 2*(nearY-farY));
-    printf("cameraPos = %f\n", cameraPos);
+    printf("[DGraphX]:\tcameraPos = %f\n", cameraPos);
     if(mode) DrawAxes(&j); //printf("%d:(\n", j);
     for(int i = 0; i < n; i++) {
         for (double y = a; y < b; y += dy) {
@@ -658,7 +659,9 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
 }
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode) {
-    double dt = 1e-4; Point pts[2]; XPoint ptx[2];
+    double dt = 1e-4; 
+    Point pts[2]; 
+    XPoint ptx[2];
     VectorSight();
     nearY = farY = curvefun[1](it);
     SetLineWidth(3);
@@ -682,7 +685,9 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
-    double dt = (ft-it)/150., ds = (fs-is)/100.; double u[3],w[3],tmpx[3], res[3]; int j = 0;
+    double dt = (ft-it)/150., ds = (fs-is)/100.; 
+    double u[3],w[3],tmpx[3], res[3]; 
+    int j = 0;
     SetShadingColor(MAGENTA);
     pallette(firstColor, secondColor, modeColor, N_COLOR);
     VectorSight();
@@ -693,7 +698,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
             if(parfun[1](t,s) < farY) farY = parfun[1](t,s);
         }
     } if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
-    printf("cameraPos = %f\n", cameraPos);
+    printf("[DGraphX]:\tcameraPos = %f\n", cameraPos);
     if(mode) DrawAxes(&j);
     for(double t = it; t < ft; t += dt) {
         for (double s = is; s < fs; s += ds) {

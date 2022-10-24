@@ -12,7 +12,7 @@
 #define WND_X           0
 #define WND_Y           0 
 #define WND_WDT         800 
-#define WND_HGT         600
+#define WND_HGT         700
 #define WND_MIN_WDT     50
 #define WND_MIN_HGT     50
 #define WND_BORDER_WDT  5

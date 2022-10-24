@@ -1,6 +1,6 @@
 // DGraphX -- free grapher, version 0.1
 //
-// David Mikheev 7/18/19
+// David Miheev 7/18/19
 
 #include "DGraphX.h"
 #include "Interp2D.h"
@@ -71,9 +71,7 @@ double pary2D(double t) { // y-component for DrawParametric2D
 }
 
 double u(double x, double y) { // function for DrawGraph3DX
-    //if(sqrt(x*x+y*y) > 1e-5)
-    return 3*cos(3*sqrt(x*x+y*y))*exp(-sqrt(x*x+y*y)/3.);//6*sin(sqrt(x*x+y*y))/sqrt(x*x+y*y);
-    //else return 6.;
+    return 3*cos(3*sqrt(x*x+y*y))*exp(-sqrt(x*x+y*y)/3.);
 }
 
 double w(double x, double y) { // function for DrawGraph3DX
@@ -81,30 +79,30 @@ double w(double x, double y) { // function for DrawGraph3DX
 }
 
 double v(double x, double y) { // function for DrawGraph3DX
-    return 3*exp(-x*x/2.-2*y*y);//4*sqrt((x-1)*(x-1)+y*y) - 1;
+    return 3*exp(-x*x/2.-2*y*y);
 }
 
 double curvex(double t) { // x-component for ParametricCurve3D
-    return /*t*sin(5*t)*/20*mypow(cos(t),2);
+    return 20*mypow(cos(t),2);
 }
 
 double curvey(double t) { // y-component for ParametricCurve3D
-    return /*t*cos(5*t)*/(10./2.)*sin(t);
+    return (10./2.)*sin(t);
 }
 
 double curvez(double t) { // z-component for ParametricCurve3D
-    return /*t*/10*sin(2*t);
+    return 10*sin(2*t);
 }
 double parx(double t, double s) { // x-component for ParametricGraph3D
-    return /*3*cos(t)*cos(s);//t*(1-t*t/3.+s*s)/3.;//2*cosh(t)*cos(s);//s*cos(t);//2*(4+cos(t))*cos(s)*/ 3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t);//-(2./15.)*cos(t)*(3*cos(s) - 30*sin(t) + 90*mypow(cos(t), 4)*sin(t)-60*mypow(cos(t), 6)*sin(t)+5*cos(t)*sin(t)*cos(s));
+    return  3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*cos(t);
 }
 
 double pary(double t, double s) { // y-component for ParametricGraph3D
-    return /*3*cos(t)*sin(s);//-s*(1-s*s/3.+t*t)/3.;//2*cosh(t)*sin(s);//s*sin(t);//2*(4+cos(t))*sin(s)/*/3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t);//-(1./15.)*sin(t)*(3*cos(s) - 3*mypow(cos(t),2)*cos(s)-48*mypow(cos(t),4)*cos(s)+48*mypow(cos(t),6)*cos(s)-60*sin(t)+5*cos(t)*cos(s)*sin(t)-5*mypow(cos(t),3)*cos(s)*sin(t)-80*mypow(cos(t),5)*cos(s)*sin(t)+80*mypow(cos(t),7)*cos(s)*sin(t));
+    return 3*(3+cos(t/2.)*sin(s) - sin(t/2.)*sin(2*s))*sin(t);
 }
 
 double parz(double t, double s) { // z-component for ParametricGraph3D
-    return /*3*sin(t);//(t*t - s*s)/3.;//2*t/*/3*sin(t/2.)*sin(s)+3*cos(t/2.)*sin(2*s);//(2./15.)*(3+5*cos(t)*sin(t))*sin(s);
+    return 3*sin(t/2.)*sin(s)+3*cos(t/2.)*sin(2*s);
 }
 
 double polynom(double y,double *x,double *m,int i) { // for interpolation
@@ -128,7 +126,9 @@ for(int i = 0; i < ngrid; i++) {
 static void DrawWindowContent (double* x, int* n, double a, double b) {
     
     char s[128], str[128];
-    int j, nFaces; double tmp; Face faces[100]; FILE *fi;
+    int j, nFaces; 
+    double tmp; Face faces[100]; 
+    FILE *fi;
     double stp, (*fun[NMAX])(double, double), (*curvefun[3])(double), (*parfun[3])(double, double), (*parf[2])(double);
     
     double dx = EPS;
@@ -139,13 +139,14 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     if (dim == 2) {
     if(variant == 0) {
         SetLineWidth(1);
-        WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
+        WSetColor(MAGENTA); 
+        WDrawString ("DGraphX", 300, 169);
         WSetColor(LIGHTGREEN);
         for(int i = 0; i < 9; i++) DrawArc(193 + 3*i, 170, 50 + i*(20 + 2*i), 50 + i*(20 + 2*i), 0, 360*64 );
         WDrawString("This is 2D mode", 100, 500);
         SetFont(HELVETICA12);
-        WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw interpolation with Hermite polynomial; ' 2 ' -- draw interpolation with spline",100, 525);
-        WDrawString("' 3 ' -- draw graph; ' 4 ' -- draw parametric curve (x(t), y(t))", 100, 550);
+        WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw interpolation with Hermite polynomial; ' 2 ' -- draw interpolation with spline",100, 550);
+        WDrawString("' 3 ' -- draw graph; ' 4 ' -- draw parametric curve (x(t), y(t))", 100, 575);
     } else {
         switch(mode) {
             case 1:
@@ -202,7 +203,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
         }
       } key_1 = 0;
     }
-    if(key_2 != 0)  { scale(key_2, a, b, LAMBDA); key_2 = 0; }
+    if(key_2 != 0) { scale(key_2, a, b, LAMBDA); key_2 = 0; }
     if(key_3 != 0) { xshift(key_3, SHIFT);  key_3 = 0; }
     if(key_4 != 0) { yshift(key_4, SHIFT); key_4 = 0; }
     DrawAxes2D();
@@ -291,19 +292,22 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
     } else {
         if(variant == 0) {
             SetLineWidth(1);
-            WSetColor(MAGENTA); WDrawString ("DGraphX", 300, 169);
+            WSetColor(MAGENTA); 
+            WDrawString ("DGraphX", 300, 169);
             WSetColor(LIGHTGREEN);
             for(int i = 0; i < 9; i++) DrawArc(193+3*i, 170, 50+i*(20+2*i), 50+i*(20+2*i), 0,360*64);
             WDrawString("This is 3D mode", 100, 500);  SetFont(HELVETICA12);
-            WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw 3D graph z(x,y); ' 2 ' -- draw 3D parametric curve (x(t), y(t), z(t))", 100, 525);
-            WDrawString("' 3 ' -- draw 3D parametric graph (x(t, s), y(t, s), z(t, s))", 100, 550);
+            WDrawString("' Ctrl ' -- change dimension; ' 1 ' -- draw 3D graph z(x,y); ' 2 ' -- draw 3D parametric curve (x(t), y(t), z(t))", 100, 550);
+            WDrawString("' 3 ' -- draw 3D parametric graph (x(t, s), y(t, s), z(t, s))", 100, 575);
+            WDrawString("' 4 ' -- draw polyhedra", 100, 600);
+            WDrawString("' 5,6,7 ' -- draw interpolation plots", 230, 600);
         } else {
             if(key_2 != 0) {
                 scale(key_2, -1, 1, LAMBDA);  key_2 = 0;;
             }
             if(key_4 != 0) {
-                //if(count1 + key_2 < 9 && count1 + key_2 > -9) {
-                if(key_12 == 1) ChangeCameraPosition(key_4 * -0.5);/*scale(key_2, a, b, LAMBDA);  count1 += key_2; }*/
+
+                if(key_12 == 1) ChangeCameraPosition(key_4 * -0.5);
                 if(key_12 == 2) ChangeScreenPosition(key_4 * -0.5);
                 key_4 = 0;
             } WSetColor (LIGHTGREEN);
@@ -345,7 +349,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             //if(key_5 == 1) DrawAxes();
             SetShadingColor(GREEN);
             SetCentre(0,0,0);
-            fun[0] = v; fun[1] = w; fun[2] = u;
+            fun[0] = u; fun[1] = w; fun[2] = v;
             curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
             parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
             fi = fopen("data.txt", "r");
@@ -360,12 +364,14 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     //faces[i].vertex[1][k] *= 1./3;
                     //faces[i].vertex[2][k] *= 1./3;
                 }
-            } /*printf("%f, %f, %f\n", faces[0].vertex[0][2], faces[0].vertex[1][2], faces[0].vertex[2][2]);*/ fclose(fi);
+            } /*printf("%f, %f, %f\n", faces[0].vertex[0][2], faces[0].vertex[1][2], faces[0].vertex[2][2]);*/ 
+            fclose(fi);
             if(key_6 == 0 && variant == 1) DrawGraph3DX(a, b, fun, BLUE, GREEN, key_5, key_8, 1);
             if(key_6 == 0 && variant == 2) ParametricCurve3D(curvefun, -PI, PI, key_5);
             if(key_6 == 0 && variant == 3) ParametricGraph3D(parfun, RED, BLUE, /*-2.5*/ 0, 2*PI, 0, 2*PI, key_5, key_8);
             if(key_6 == 0 && variant == 4) DrawPolytope(faces, nFaces);
             SetCentre(0.5,0.5,0);
+            
             switch (key_10) {
                 case 1:
                     SetParameter(1);
@@ -377,16 +383,27 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     SetParameter(0.01);
                     break;
             }
-            if(variant == 5) { SetShadingColor(GREEN);
+            
+            if(variant == 5) { 
+                SetShadingColor(GREEN);
                 for(int i = 0; i < ngrid; i++) {
                     for(int j = 0; j < ngrid; j++) {
                         fval[i*ngrid + j] = solution(i, j, ngrid);
                     }
-                } DrawLinear3D(fval, ngrid, BLUE);  WSetColor(LIGHTGREEN);
-                itoa(ngrid,s); scat("[Solution] Size of grid: ", s, 25, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
+                } 
+                
+                DrawLinear3D(fval, ngrid, BLUE);  
+                WSetColor(LIGHTGREEN);
+                itoa(ngrid,s); 
+                scat("[Solution] Size of grid: ", s, 25, str); 
+                scat(str,"x", strlen(str), s); 
+                itoa(ngrid, str); 
+                scat(s, str, strlen(s), s);
                 WDrawString(s, 20, 20);
             }
-            if(variant == 6) { SetShadingColor(BLUE);
+            
+            if(variant == 6) { 
+                SetShadingColor(BLUE);
                 if(key_11 == 1) { init_val(); t = clock(); SeidelGauss(fval, ngrid, &niter); t = clock() - t; key_11 = 0; }
                 DrawLinear3D(fval, ngrid, BLUE);  WSetColor(LIGHTGREEN);
                 //printf("%f\n", accuracy(solution, fval, ngrid));
@@ -396,7 +413,9 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 itoa(niter, s); scat("number of iterations: ", s, 22, str); WDrawString(str, 20, 60);
                 dtoa((double) t/CLOCKS_PER_SEC, s, 5); scat("time: ", s, 6, str); scat(str, " sec", strlen(str), s); WDrawString(s, 20, 80);
             }
-            if(variant == 7) { SetShadingColor(RED);
+            
+            if(variant == 7) { 
+                SetShadingColor(RED);
                 if(key_11 == 1) { init_val(); t = clock(); RichardsonIter(fval, ngrid, 2, 8, &niter); t = clock() - t; key_11 = 0; }
                 DrawLinear3D(fval, ngrid, BLUE); WSetColor(LIGHTGREEN);
                 itoa(ngrid,s); scat("[Richardson iter] Size of grid: ", s, 32, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
@@ -557,7 +576,6 @@ static int KeyPressFunction (int nKeySym) {
             if(key_10 < 3) key_10++;
             else key_10 = 1;
             key_11 = 1;
-            //printf("%d, %d\n", key_10, variant);
             break;
         case XK_0:
             variant = 0;
@@ -572,13 +590,12 @@ static int KeyPressFunction (int nKeySym) {
 
 int main (void) {
     int ret_code; int n = N;
-    double x[NMAX], a, b;
-    printf("[DGraphX]: Choose dimension:\n");
-    printf("[DGraphX]: "); scanf("%d", &dim);
+    double x[NMAX], a = -5, b = 5;
+    // printf("[DGraphX]: Choose dimension:\n");
+    // printf("[DGraphX]: "); scanf("%d", &dim);
     if(dim == 2) {
     printf("\n[DGraphX]:\t+----------------------- DGraphX --------------------------+\n");
     printf("\t\t| Еnter the endpoints of the segment of interpolation:     |\n");
-    printf("\t\t   "); scanf("%lf%lf",&a,&b); //print//if(n<=1) printf("n = %d < 2 Impossible!
     printf("\t\t| Choose segment split mode (uniform -- 1, manually -- 2): |\n");
     printf("\t\t  mode: "); scanf("%d",&mode);
     switch (mode) {
@@ -613,9 +630,8 @@ int main (void) {
     } else {
         printf("\n[DGraphX]:\t+----------------------- DGraphX --------------------------+\n");
         printf("\t\t| Еnter the endpoints of the square of interpolation:      |\n");
-        printf("\t\t   "); scanf("%lf%lf",&a,&b);
         printf("\t\t| === === === === === === === === === === === === === ===  |\n");
-        printf("\t\t  Square of interpolation: [%.1f,%.1f]x[%.1f,%.1f]; n = %d\n",a,b,a,b,n*n);
+        printf("\t\t  Square of interpolation: [%.1f,%.1f]x[%.1f,%.1f]; n = %d\n",a, b, a, b, n*n);
         printf("\t\t| This is 3D mode!                                         |\n");
         printf("\t\t+----------------------------------------------------------+\n\n");
     }

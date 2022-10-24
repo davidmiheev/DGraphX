@@ -1,6 +1,6 @@
 // DGraphX -- free grapher, version 0.1
 //
-// David Mikheev 7/18/19
+// David Miheev 7/18/19
 
 
 #ifndef DGRAPHX_H
