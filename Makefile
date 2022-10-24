@@ -1,7 +1,7 @@
 NAME            = DGraphX
 
-CC              = clang
-LINK            = clang
+CC              = gcc
+LINK            = gcc
 
 DEBUG           = 
 OPTIMAZE_COMMON   = -O2 
