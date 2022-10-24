@@ -1,7 +1,7 @@
 # DGraphX
 This program is simple and cute 2D and 3D grapher (to draw various 2d and 3d plots) from scratch. It doesn't have any dependencies at all. 
 For creating graphics it uses only homebrewed ```C``` сode and ```X11``` (main windowing system on UNIX-like systems). 
-```DGraphX``` is a very lightweight program and is capable work on a very slow devices (without any graphics accelerators).
+Grapher ```DGraphX``` is a very lightweight program and is capable work on a very slow devices (without any graphics accelerators).
 
 ## Requirements
 * X11
