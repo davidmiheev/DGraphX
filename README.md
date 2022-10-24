@@ -24,7 +24,6 @@ Run executable and enjoy:
 
 After that you will be dealing with the GUI. The GUI is very modest, but (hope) simple for understanding.
 Important keybord commands (program yet don't support mouse) for the 3D mode:
-
 * Use **<-** and **->** keys for rotation about one of the coordinate axes 
 * By default the plot rotates about Z axis, but you can change axis: **X** key change to rotation about X axis, **Y** key rotation about Y axis, **Z** key rotation about Z axis. 
 * If you want to see axes, just press **Enter**
