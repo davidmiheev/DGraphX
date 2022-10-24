@@ -4,24 +4,21 @@ For creating graphics it uses only homebrewed ```C``` сode and ```X11``` (main 
 ```DGraphX``` is a very lightweight program and is capable work on a very slow devices (without any graphics accelerators).
 
 ## Requirements
-* ```X11```
-* ```С``` compiler (e.g gcc or clang)
+* X11
+* С compiler (e.g gcc or clang)
 
 ## Install
-
 Clone this repo and make the executable file:
-
-```
+```sh
 git clone https://github.com/DavidOSX/DGraphX
 cd DGraphX
 make
 ```
 
 ## Usage
-
 Run executable and enjoy:
 
-```
+```sh
 ./DGraphX
 ```
 
