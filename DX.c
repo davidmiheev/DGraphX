@@ -68,10 +68,6 @@ static double tmp[3];
 
 static unsigned long SHADINGCOLOR;
 
-static Point pt[4];
-
-static XPoint xpt[4];
-
 static double gridleft, gridright, griddown, gridup;
 
 static int key = 0;
@@ -79,28 +75,6 @@ static int key = 0;
 static int key_1 = 0;
 
 static Pair z[BUF_SIZE];
-static Pair zt[BUF_SIZE];
-
-// 4-pass LSD radix sort on .z; depth keys are quantized to uint32 in-place.
-static void radixSortPairs(Pair *arr, int n) {
-    double mn = arr[0].z, mx = arr[0].z;
-    for (int i = 1; i < n; i++) {
-        if (arr[i].z < mn) mn = arr[i].z;
-        if (arr[i].z > mx) mx = arr[i].z;
-    }
-    double sc = (mx - mn) > 1e-12 ? 4294967295./(mx - mn) : 0.;
-    for (int i = 0; i < n; i++) arr[i].z = (double)(unsigned)((arr[i].z - mn)*sc);
-    Pair *src = arr, *dst = zt, *sw;
-    for (int p = 0; p < 4; p++) {
-        unsigned cnt[256] = {0}, pos[256], acc = 0;
-        int sh = 8*p;
-        for (int i = 0; i < n; i++) cnt[((unsigned)src[i].z >> sh) & 255]++;
-        for (int c = 0; c < 256; c++) { pos[c] = acc; acc += cnt[c]; }
-        for (int i = 0; i < n; i++) dst[pos[((unsigned)src[i].z >> sh) & 255]++] = src[i];
-        sw = src; src = dst; dst = sw;
-    }
-    if (src != arr) memcpy(arr, src, n*sizeof(*arr));
-}
 
 static vertex zm[BUF_SIZE];
 static polygon zb[BUF_SIZE];
@@ -367,6 +341,40 @@ void RotateZ(int mode) {
     elemRotation(Z,K*DPHI,mode);
 }
 
+// Left-multiply M by a camera-space axis rotation: M = N*M.
+// Camera space: x = screen right, y = view depth, z = screen down.
+static void camRotation(int Axis, double angle) {
+    double N[9];
+    MatrixId(N);
+    switch (Axis) {
+        case 1:
+            n(1,1) = n(2,2) = cos(angle);
+            n(1,2) = sin(angle);
+            n(2,1) = -sin(angle);
+            break;
+        case 3:
+            n(0,0) = n(1,1) = cos(angle);
+            n(0,1) = sin(angle);
+            n(1,0) = -sin(angle);
+            break;
+        default:
+            return;
+    }
+    double c0, c1, c2;
+    for (int j = 0; j < 3; j++) {
+        c0 = M[j]; c1 = M[3 + j]; c2 = M[6 + j];
+        for (int i = 0; i < 3; i++)
+            M[3*i + j] = N[3*i]*c0 + N[3*i + 1]*c1 + N[3*i + 2]*c2;
+    }
+}
+
+// Trackball drag: horizontal -> rotate about screen-up axis,
+// vertical -> rotate about screen-right axis.
+void RotateDrag(double dx, double dy) {
+    camRotation(X, dy*0.005);
+    camRotation(Z, -dx*0.005);
+}
+
 void RotateX_Angle(double angle) {
     elemRotation(X,angle,1);
 }
@@ -402,6 +410,132 @@ void Projection(Point *p, double x, double y, double z) {
     p->y = tmp[2]*(cameraPos-screenPos)/(cameraPos - tmp[1]);
 }
 
+#define NEAR_EPS 0.1
+static double nearW(void) { return cameraPos - screenPos + NEAR_EPS; }
+static double mapX(double x) { return x/xc + width*((-xmin)/(xmax - xmin)); }
+static double mapY(double y) { return -y/yc + height*(ymax/(ymax - ymin)); }
+
+// World point -> projected scene coords; returns camera-space w (< NEAR_EPS if behind).
+static double ProjectW(double x, double y, double z, Point *p) {
+    double t[3];
+    Init(t, x - centre[0], y - centre[1], z - centre[2]);
+    MxV(M, t);
+    double w = cameraPos - t[1];
+    p->x = t[0]*(cameraPos - screenPos)/w;
+    p->y = t[2]*(cameraPos - screenPos)/w;
+    return w;
+}
+
+// Per-pixel shading context: to-camera direction of the triangle.
+typedef struct { double res[3]; } ShadeCtx;
+
+static int shadeIdx(double t, int n) {
+    int i = (int)((t/2. + .5)*n);
+    if (i < 0) i = 0;
+    if (i >= n) i = n - 1;
+    return i;
+}
+
+// Phong-ish: interpolated normal -> normalize -> diffuse+specular palette lookup.
+static unsigned long shadePhong(const float *a, void *ctx_) {
+    ShadeCtx *c = ctx_;
+    double n[3] = {a[0], a[1], a[2]}, r[3];
+    normalize(n, 3);
+    if (inner(n, c->res, 3) < 0) intxvec(-1., n, n);
+    reflect(light, n, r);
+    return cx(shadeIdx(inner(n, light, 3), N_COLOR),
+              shadeIdx(inner(r, c->res, 3), BW_COLOR));
+}
+
+// Interpolated height -> color-ramp lookup.
+static unsigned long shadeHeight(const float *a, void *ctx_) {
+    (void)ctx_;
+    return cx((int)((0.5 + atan(COEF*a[0])/PI)*N_COLOR), 0);
+}
+
+// Flat per-face shading (fallback when phongEnabled is off).
+static unsigned long flatShade(double tri[][3], ShadeCtx *sc) {
+    double e1[3], e2[3], n[3], r[3];
+    minus(tri[1], tri[0], e1); minus(tri[2], tri[0], e2);
+    cross(e1, e2, n);
+    normalize(n, 3);
+    if (inner(n, sc->res, 3) < 0) intxvec(-1., n, n);
+    reflect(light, n, r);
+    return cx(shadeIdx(inner(n, light, 3), N_COLOR),
+              shadeIdx(inner(r, sc->res, 3), BW_COLOR));
+}
+
+// Near-plane clip (at the screen plane) + project + rasterize.
+// attr: per-vertex float attributes lerped through the clip; NULL = flat color.
+#define FB_NA 4
+static void rasterTriA(double v[][3], float attr[][FB_NA], int na,
+                       unsigned long (*shade)(const float *, void *), void *ctx,
+                       unsigned long flatcol) {
+    double cv[3][3], w[3], nw = nearW();
+    for (int i = 0; i < 3; i++) {
+        Init(cv[i], v[i][0] - centre[0], v[i][1] - centre[1], v[i][2] - centre[2]);
+        MxV(M, cv[i]);
+        w[i] = cameraPos - cv[i][1];
+    }
+    double px[4], py[4], pw[4];
+    float pa[4][FB_NA];
+    int np = 0;
+    for (int i = 0; i < 3; i++) {
+        int j = (i + 1)%3;
+        double fi = w[i] - nw, fj = w[j] - nw;
+        if (fi > 0) {
+            px[np] = cv[i][0]; py[np] = cv[i][2]; pw[np] = w[i];
+            for (int k = 0; k < na; k++) pa[np][k] = attr[i][k];
+            np++;
+        }
+        if ((fi > 0) != (fj > 0)) {
+            double t = fi/(fi - fj);
+            px[np] = cv[i][0] + (cv[j][0] - cv[i][0])*t;
+            py[np] = cv[i][2] + (cv[j][2] - cv[i][2])*t;
+            pw[np] = w[i] + (w[j] - w[i])*t;
+            for (int k = 0; k < na; k++) pa[np][k] = attr[i][k] + (attr[j][k] - attr[i][k])*t;
+            np++;
+        }
+    }
+    if (np < 3) return;
+    double sx[4], sy[4], sq[4];
+    for (int i = 0; i < np; i++) {
+        sx[i] = mapX(px[i]*(cameraPos - screenPos)/pw[i]);
+        sy[i] = mapY(py[i]*(cameraPos - screenPos)/pw[i]);
+        sq[i] = 1./pw[i];
+    }
+    for (int i = 1; i + 1 < np; i++) {
+        if (na)
+            FB_TriA(sx[0], sy[0], sq[0], pa[0], sx[i], sy[i], sq[i], pa[i],
+                    sx[i + 1], sy[i + 1], sq[i + 1], pa[i + 1], na, shade, ctx);
+        else
+            FB_Tri(sx[0], sy[0], sq[0], sx[i], sy[i], sq[i], sx[i + 1], sy[i + 1], sq[i + 1], flatcol);
+    }
+}
+
+static void rasterTri(double v[][3], unsigned long col) {
+    rasterTriA(v, NULL, 0, NULL, NULL, col);
+}
+
+static float axq[BUF_SIZE][2];
+static Point axlbl[3];
+static int axlbl_n = 0;
+
+static void drawAxisSegs(int ax) {
+    for (int i = 0; i < ax; i++) {
+        if (axq[i][0] < 0 || axq[i][1] < 0) continue;
+        FB_Seg(mapX(zm[i].x), mapY(zm[i].y), axq[i][0],
+               mapX(zm[i].z), mapY(zm[i].t), axq[i][1], LIGHTGREEN);
+    }
+}
+
+void DrawAxisLabels(void) {
+    static const char *names[3] = {"X", "Y", "Z"};
+    WSetColor(LIGHTGREEN);
+    for (int i = 0; i < axlbl_n; i++)
+        WDrawString(names[i], invmap(axlbl[i].x, axlbl[i].y).x, invmap(axlbl[i].x, axlbl[i].y).y);
+}
+
 Point ObliqueProjection ( /*PointR3 p*/ double x, double y, double z ) {
     Point P;
     P.x = x - y*cos(K*ALPHA)/2;
@@ -417,78 +551,49 @@ void InitialPosition () {
 }
 
 void DrawAxes(int *n) {
-    Point p1,p2;
+    Point p1, p2;
     double tmpx[3];
     SetLineWidth(0);
     *n = 0;
+    axlbl_n = 0;
+#define AXSEG(X1, Y1, Z1, X2, Y2, Z2) do { \
+    double wq0_ = ProjectW(X1, Y1, Z1, &p1), wq1_ = ProjectW(X2, Y2, Z2, &p2); \
+    Init(tmpx, X1, Y1, Z1); \
+    z[*n].z = inner(view, tmpx, 3); z[*n].num = *n; \
+    zm[*n].x = p1.x; zm[*n].y = p1.y; \
+    zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1; \
+    axq[*n][0] = wq0_ > nearW() ? 1./wq0_ : -1.f; \
+    axq[*n][1] = wq1_ > nearW() ? 1./wq1_ : -1.f; \
+    (*n)++; } while(0)
     for(double t = 0.3; t > 0; t-=0.05) {
         for (double phi = 0; phi < 360; phi+=2) {
-            
-            Init(tmpx, (5-t), t*cos(K*phi)/2., t*sin(K*phi)/2.);
-             
-            z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-            
-            Projection(&p1,5-t,t*cos(K*phi)/2.,t*sin(K*phi)/2.);
-             
-            Projection(&p2,5-t,t*cos(K*(phi+2))/2.,t*sin(K*(phi+2))/2.);
-            zm[*n].x = p1.x; zm[*n].y = p1.y;//DrawLine(p1.x,p1.y,p2.x,p2.y);
-            zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1;
-            (*n)++;
+            AXSEG(5-t, t*cos(K*phi)/2., t*sin(K*phi)/2.,
+                  5-t, t*cos(K*(phi+2))/2., t*sin(K*(phi+2))/2.);
         }
     }
     for(double t = 0.3; t > 0; t-=0.05) {
         for (double phi = 0; phi < 360; phi+=2) {
-            Init(tmpx, t*cos(K*phi)/2., (5-t), t*sin(K*phi)/2.);
-            z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-            Projection(&p1,t*cos(K*phi)/2., 5-t, t*sin(K*phi)/2.);
-            Projection(&p2,t*cos(K*(phi+2))/2.,5-t,t*sin(K*(phi+2))/2.);
-            zm[*n].x = p1.x; zm[*n].y = p1.y;//DrawLine(p1.x,p1.y,p2.x,p2.y);
-            zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1;
-            (*n)++;
+            AXSEG(t*cos(K*phi)/2., 5-t, t*sin(K*phi)/2.,
+                  t*cos(K*(phi+2))/2., 5-t, t*sin(K*(phi+2))/2.);
         }
     }
     for(double t = 0.3; t > 0; t-=0.05) {
         for (double phi = 0; phi < 360; phi+=2) {
-            Init(tmpx, t*cos(K*phi)/2., t*sin(K*phi)/2.,(5-t));
-            z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-            Projection(&p1,t*cos(K*phi)/2, t*sin(K*phi)/2, 5-t);
-            Projection(&p2,t*cos(K*(phi+2))/2., t*sin(K*(phi+2))/2., 5-t);
-            zm[*n].x = p1.x; zm[*n].y = p1.y;
-            zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1;
-            (*n)++;
+            AXSEG(t*cos(K*phi)/2., t*sin(K*phi)/2., 5-t,
+                  t*cos(K*(phi+2))/2., t*sin(K*(phi+2))/2., 5-t);
         }
-    } //SetLineWidth(3);
-    for(double t = 0; t < 1-0.03; t += 0.03) {
-        Init(tmpx, (-5 + 10*t),0,0);
-        z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-        Projection(&p1,-5 + 10*t,0,0);
-        Projection(&p2,-5 + 10*(t+0.03),0,0);
-        zm[*n].x = p1.x; zm[*n].y = p1.y;
-        zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1; (*n)++;
     }
-    for(double t = 0; t < 1-0.03; t += 0.03) {
-        Init(tmpx, 0, (-5 + 10*t),0);
-        z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-        Projection(&p1,0,-5 + 10*t,0);
-        Projection(&p2,0,-5 + 10*(t+0.03),0);
-        zm[*n].x = p1.x; zm[*n].y = p1.y;//DrawLine(p1.x,p1.y,p2.x,p2.y);
-        zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1; (*n)++;
-    }
-     for(double t = 0; t < 1-0.03; t += 0.03) {
-        Init(tmpx, 0, 0,(-5 + 10*t));
-        z[*n].z = inner(view, tmpx, 3); z[*n].num = *n;
-        Projection(&p1,0,0,-5 + 10*t);
-        Projection(&p2,0,0,-5 + 10*(t+0.03));
-        zm[*n].x = p1.x; zm[*n].y = p1.y;//DrawLine(p1.x,p1.y,p2.x,p2.y);
-        zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1; (*n)++;
-    }
-    //WSetColor(LIGHTGREEN);
-        Projection(&p1,5.3,0,0);
-        WDrawString ("X", invmap(p1.x,p1.y).x, invmap(p1.x,p1.y).y);
-        Projection(&p1,0,5.3,0);
-        WDrawString ("Y", invmap(p1.x,p1.y).x, invmap(p1.x,p1.y).y);
-        Projection(&p1,0,0,5.3);
-        WDrawString ("Z", invmap(p1.x,p1.y).x, invmap(p1.x,p1.y).y);
+    for(double t = 0; t < 1-0.03; t += 0.03)
+        AXSEG(-5 + 10*t, 0, 0, -5 + 10*(t+0.03), 0, 0);
+    for(double t = 0; t < 1-0.03; t += 0.03)
+        AXSEG(0, -5 + 10*t, 0, 0, -5 + 10*(t+0.03), 0);
+    for(double t = 0; t < 1-0.03; t += 0.03)
+        AXSEG(0, 0, -5 + 10*t, 0, 0, -5 + 10*(t+0.03));
+#undef AXSEG
+    Projection(&axlbl[0], 5.3, 0, 0);
+    Projection(&axlbl[1], 0, 5.3, 0);
+    Projection(&axlbl[2], 0, 0, 5.3);
+    axlbl_n = 3;
 }
 
 void VectorSight() {
@@ -581,7 +686,7 @@ void InvProj(double x, double y, double *res) {
 
 
 void DrawLinear3D(double* a, int n, unsigned long Color, int mode) {
-    double vec[3], res[3], h = 10./(n-1); int k = 0;
+    double h = 10./(n-1);
     double zmin = a[0], zmax = a[0];
     for (int i = 0; i < n*n; i++) {
         if (a[i] < zmin) zmin = a[i];
@@ -595,65 +700,47 @@ void DrawLinear3D(double* a, int n, unsigned long Color, int mode) {
     int ax = 0;
     if(mode) DrawAxes(&ax);
     int st = interactive ? 2 : 1;
-    for(int i = 0; i < n - 1; i += st) {
-        int sy = i + st <= n - 1 ? st : n - 1 - i;
-        for(int j = 0; j < n - 1; j += st) { //zb[k].n = 3;
-            int sx = j + st <= n - 1 ? st : n - 1 - j;
-            Init(zb[k].vert[0], j*h - 5, i*h - 5, ZS(a[i*n + j]));
-            Init(zb[k].vert[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j+sx]));
-            Init(zb[k].vert[2], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
-            plus(zb[k].vert[0], zb[k].vert[1], vec);
-            plus(vec, zb[k].vert[2], vec);
-            intxvec(1./3., vec, vec);
-            minus(vec, centre, vec);
-            z[ax + k].z = inner(view, vec, 3); z[ax + k].num = ~k;
-            Init(vec, sx*h, 0, (a[i*n + j + sx] - a[i*n + j])*zscale);
-            Init(res, 0, sy*h, (a[(i+sy)*n + j] - a[i*n + j])*zscale);
-            cross(vec, res, zb[k].normal); //zb[k + 1].n = 3;
-            Init(zb[k+1].vert[0], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
-            Init(zb[k+1].vert[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j+sx]));
-            Init(zb[k+1].vert[2], (j+sx)*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j+sx]));
-            plus(zb[k+1].vert[0], zb[k+1].vert[1], vec);
-            plus(vec, zb[k+1].vert[2], vec);
-            intxvec(1./3., vec, vec);
-            minus(vec, centre, vec);
-            z[ax + k + 1].z = inner(view, vec,3); z[ax + k + 1].num = ~(k + 1);
-            Init(vec, sx*h, 0, (a[(i+sy)*n + j + sx] - a[(i+sy)*n + j])*zscale);
-            Init(res, 0, sy*h, (a[(i+sy)*n + j + sx] - a[i*n + j + sx])*zscale);
-            cross(vec, res, zb[k+1].normal);
-            k+=2;
+    if (FB_Begin(BLACK)) {
+        ShadeCtx sc;
+        double tri[3][3];
+        float attr[4][FB_NA];
+        for(int i = 0; i < n - 1; i += st) {
+            int sy = i + st <= n - 1 ? st : n - 1 - i;
+            for(int j = 0; j < n - 1; j += st) {
+                int sx = j + st <= n - 1 ? st : n - 1 - j;
+                for (int vi = 0; vi < 4; vi++) {
+                    int ii = vi >= 2 ? i + sy : i, jj = (vi == 1 || vi == 3) ? j + sx : j;
+                    double dfx, dfy;
+                    if (jj > 0 && jj < n - 1) dfx = (a[ii*n + jj + 1] - a[ii*n + jj - 1])/(2.*h);
+                    else if (jj < n - 1) dfx = (a[ii*n + jj + 1] - a[ii*n + jj])/h;
+                    else dfx = (a[ii*n + jj] - a[ii*n + jj - 1])/h;
+                    if (ii > 0 && ii < n - 1) dfy = (a[(ii + 1)*n + jj] - a[(ii - 1)*n + jj])/(2.*h);
+                    else if (ii < n - 1) dfy = (a[(ii + 1)*n + jj] - a[ii*n + jj])/h;
+                    else dfy = (a[ii*n + jj] - a[(ii - 1)*n + jj])/h;
+                    attr[vi][0] = -zscale*dfx; attr[vi][1] = -zscale*dfy; attr[vi][2] = 1.;
+                }
+                Init(tri[0], j*h - 5, i*h - 5, ZS(a[i*n + j]));
+                Init(tri[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j + sx]));
+                Init(tri[2], (j+sx)*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j + sx]));
+                Init(sc.res, cameraPos*view[0] - tri[0][0] + centre[0], cameraPos*view[1] - tri[0][1] + centre[1], cameraPos*view[2] - tri[0][2] + centre[2]);
+                normalize(sc.res, 3);
+                float at0[3][FB_NA] = {{attr[0][0], attr[0][1], attr[0][2], 0}, {attr[1][0], attr[1][1], attr[1][2], 0}, {attr[3][0], attr[3][1], attr[3][2], 0}};
+                rasterTriA(tri, at0, phongEnabled ? 3 : 0, shadePhong, &sc, flatShade(tri, &sc));
+                Init(tri[1], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
+                float at1[3][FB_NA] = {{attr[0][0], attr[0][1], attr[0][2], 0}, {attr[2][0], attr[2][1], attr[2][2], 0}, {attr[3][0], attr[3][1], attr[3][2], 0}};
+                rasterTriA(tri, at1, phongEnabled ? 3 : 0, shadePhong, &sc, flatShade(tri, &sc));
+            }
         }
+        drawAxisSegs(ax);
+        FB_Flush();
     }
-    normalMap(zb, k); //WSetColor(RED);
-    radixSortPairs(z, ax + k);
-    for (int i = 0; i < ax + k; i++) {
-        if (z[i].num >= 0) {
-            WSetColor(LIGHTGREEN);
-            DrawLine(zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z, zm[z[i].num].t);
-            continue;
-        }
-        polygon *pl = &zb[~z[i].num];
-        if(SightControl(pl->vert[0][0], pl->vert[0][1], pl->vert[0][2], 0.1)) {
-        Projection(&pt[0], pl->vert[0][0], pl->vert[0][1], pl->vert[0][2]);
-        Projection(&pt[1], pl->vert[1][0], pl->vert[1][1], pl->vert[1][2]);
-        Projection(&pt[2], pl->vert[2][0], pl->vert[2][1], pl->vert[2][2]);
-        Init(res, (cameraPos*view[0] -  pl->vert[0][0] +centre[0]), (cameraPos*view[1] - pl->vert[0][1] + centre[1]), (cameraPos*view[2] - pl->vert[0][2])+centre[2]);
-        normalize(res,3);
-        if(inner(res, pl->normal, 3) < -1e-10) Init(pl->normal, (-1)*pl->normal[0], (-1)*pl->normal[1], (-1)*pl->normal[2]);
-        reflect(light, pl->normal, vec);
-        WSetColor(cx((int)((inner(pl->normal, light, 3)/2. + 1./2.)*N_COLOR),(int)((inner(vec, res, 3)/2. + 1./2.)*BW_COLOR)));
-
-        invmapX(pt, xpt, 3);
-        WFillPolygon (xpt, 3);
-        }
-    }
+    DrawAxisLabels();
 #undef ZS
 }
 
 void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned long firstColor,
                   unsigned long secondColor, int mode, int modeColor, int n) {
     double dx = EPS_X, dy = EPS_Y;
-    double u[3], w[3], tmpx[3], res[3];
     int j = 0;
     static double *gv = NULL, *gm = NULL;
     static size_t gcap = 0;
@@ -685,66 +772,57 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     farY = a; nearY = b;
     if(key == 0)  InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j); //printf("%d:(\n", j);
-    if(gv && gm)
-    for(int i = 0; i < n; i++) {
-        for (int iy = 0; iy < nyc; iy += st) {
-            for (int ix = 0; ix < nxc; ix += st) {
-                int vi = iy*nxv + ix;
-                double x = a + ix*dx, y = a + iy*dy;
-                zm[j].x = x; zm[j].y = y; zm[j].z = gv[i*nf/n + vi];
-                zm[j].data = i; zm[j].t = vi;
-                Init(tmpx, x, y, zm[j].z);
-                 z[j].z = inner(tmpx, view, 3); z[j].num = j; j++;
+    if(gv && gm && FB_Begin(BLACK)) {
+        ShadeCtx sc;
+        double tri[3][3];
+        float attr[4][FB_NA], at[3][FB_NA];
+        for(int i = 0; i < n; i++) {
+            double *gv_ = &gv[i*nf/n], *gm_ = &gm[i*nf/n];
+            for (int iy = 0; iy < nyc; iy += st) {
+                for (int ix = 0; ix < nxc; ix += st) {
+                    int v = iy*nxv + ix;
+                    int sx = ix + st <= nxc ? st : nxc - ix;
+                    int sy = iy + st <= nyc ? st : nyc - iy;
+                    double x = a + ix*dx, y = a + iy*dy;
+                    int na;
+                    if(modeColor == 0) {
+                        na = 1;
+                        attr[0][0] = gv_[v]; attr[1][0] = gv_[v + sx];
+                        attr[2][0] = gv_[v + sy*nxv]; attr[3][0] = gv_[v + sx + sy*nxv];
+                    } else {
+                        na = 3;
+                        for (int vi = 0; vi < 4; vi++) {
+                            int iiy = vi >= 2 ? iy + sy : iy, iix = (vi == 1 || vi == 3) ? ix + sx : ix;
+                            int vv = iiy*nxv + iix;
+                            double dfx, dfy;
+                            if (iix > 0 && iix < nxc) dfx = (gv_[vv + 1] - gv_[vv - 1])/(2.*dx);
+                            else if (iix < nxc) dfx = (gv_[vv + 1] - gv_[vv])/dx;
+                            else dfx = (gv_[vv] - gv_[vv - 1])/dx;
+                            if (iiy > 0 && iiy < nyc) dfy = (gv_[vv + nxv] - gv_[vv - nxv])/(2.*dy);
+                            else if (iiy < nyc) dfy = (gv_[vv + nxv] - gv_[vv])/dy;
+                            else dfy = (gv_[vv] - gv_[vv - nxv])/dy;
+                            attr[vi][0] = -dfx; attr[vi][1] = -dfy; attr[vi][2] = 1.;
+                        }
+                    }
+                    Init(tri[0], x, y, gv_[v]);
+                    Init(tri[1], x + sx*dx, y, gv_[v + sx]);
+                    Init(tri[2], x + sx*dx, y + sy*dy, gv_[v + sx + sy*nxv]);
+                    Init(sc.res, cameraPos*view[0] - x + centre[0], cameraPos*view[1] - y + centre[1], cameraPos*view[2] - gv_[v] + centre[2]);
+                    normalize(sc.res, 3);
+                    memcpy(at[0], attr[0], sizeof(at[0])); memcpy(at[1], attr[1], sizeof(at[1])); memcpy(at[2], attr[3], sizeof(at[2]));
+                    rasterTriA(tri, at, phongEnabled ? na : 0, modeColor == 0 ? shadeHeight : shadePhong, &sc,
+                               modeColor == 0 ? cx((int)((0.5 + atan(COEF * gm_[v])/PI)*N_COLOR),0) : flatShade(tri, &sc));
+                    Init(tri[1], x, y + sy*dy, gv_[v + sy*nxv]);
+                    memcpy(at[1], attr[2], sizeof(at[1]));
+                    rasterTriA(tri, at, phongEnabled ? na : 0, modeColor == 0 ? shadeHeight : shadePhong, &sc,
+                               modeColor == 0 ? cx((int)((0.5 + atan(COEF * gm_[v])/PI)*N_COLOR),0) : flatShade(tri, &sc));
+                }
             }
         }
-    } radixSortPairs(z, j);
-    for (int i = 0; i < j; i++) {
-        if(zm[z[i].num].data == -1) {
-            WSetColor(LIGHTGREEN);  DrawLine(zm[z[i].num].x,zm[z[i].num].y,zm[z[i].num].z,zm[z[i].num].t);
-            continue;
-        }
-        int v = (int)zm[z[i].num].t, d = zm[z[i].num].data;
-        int cix = v % nxv, ciy = v / nxv;
-        int sx = cix + st <= nxc ? st : nxc - cix;
-        int sy = ciy + st <= nyc ? st : nyc - ciy;
-        double *gv_ = &gv[d*nf/n], *gm_ = &gm[d*nf/n];
-        if(SightControl(zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z, 0.1)) {
-            Projection(&pt[0], zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z);
-            Projection(&pt[1], zm[z[i].num].x + sx*dx, zm[z[i].num].y, gv_[v + sx]);
-
-            if(EPS_X*EPS_Y > 1e-2) Projection(&pt[2], zm[z[i].num].x, zm[z[i].num].y + sy*dy, gv_[v + sy*nxv]);
-
-            else Projection(&pt[2], zm[z[i].num].x + sx*dx, zm[z[i].num].y + sy*dy, gv_[v + sx + sy*nxv]);
-
-            if(modeColor == 0)  WSetColor(cx((int)((0.5 + atan(COEF * gm_[v])/PI)*N_COLOR),0));//[0]
-            else {
-                Init(u, 0, sy*EPS_Y, (gv_[v + sy*nxv] - zm[z[i].num].z));
-                Init(w, sx*EPS_X, 0, (gv_[v + sx] - zm[z[i].num].z));
-                cross(u, w, normal);
-                normalize(normal, 3);
-                InitV(tmp, view);
-                Init(view, (cameraPos*view[0] - zm[z[i].num].x), (cameraPos*view[1] - zm[z[i].num].y), (cameraPos*view[2] - zm[z[i].num].z));
-                normalize(view, 3);
-                if(inner(view, normal, 3) < 0.) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
-                reflect(light, normal, res);
-                WSetColor(cx((int)((inner(normal, light, 3)/2. + 1./2.)*N_COLOR), (int)((inner(view, res, 3)/2. + 1./2.)*BW_COLOR)));
-                InitV(view, tmp);
-            }
-            if(EPS_X*EPS_Y < 1e-2)  {
-                Projection(&pt[3], zm[z[i].num].x, zm[z[i].num].y + sy*dy, gv_[v + sy*nxv]);
-                invmapX(pt, xpt, 4);
-                WFillPolygon (xpt, 4);
-            } else {
-            invmapX(pt, xpt, 3); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
-            WFillPolygon (xpt, 3);
-
-            Projection(&pt[0], zm[z[i].num].x + sx*dx, zm[z[i].num].y + sy*dy, gv_[v + sx + sy*nxv]);
-
-                invmapX(pt, xpt, 3);
-                WFillPolygon (xpt, 3);
-            }
-        }
+        drawAxisSegs(j);
+        FB_Flush();
     }
+    DrawAxisLabels();
 }
 
 static void tubeTangent(double (*curvefun[]) (double), double t, double ftol, double P[3], double T[3]) {
@@ -792,6 +870,7 @@ static void tubeTri(int k, double v0[3], double v1[3], double v2[3]) {
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode) {
     const int NT = 400;
     static double rings[401][TUBE_NR][3];
+    static double gc[3] = {0., 0., 0.};
     static int tre = -1;
     static double r = 0.05;
     double dt = (s - it)/NT, ftol = dt*0.5;
@@ -827,6 +906,11 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             tubeRingAt(P, n1, n2, r, rings[i]);
             InitV(Tp, T);
         }
+        Init(gc, 0., 0., 0.);
+        for (int i = 0; i <= NT; i++)
+            for (int j = 0; j < TUBE_NR; j++)
+                plus(gc, rings[i][j], gc);
+        intxvec(1./((NT + 1)*TUBE_NR), gc, gc);
         tre = renderEpoch;
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
@@ -840,29 +924,39 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             k += 2;
         }
     }
-    for (int i = 0; i < k; i++) { z[ax + i].z = zb[i].z; z[ax + i].num = ~i; }
     normalMap(zb, k);
-    radixSortPairs(z, ax + k);
-    for (int i = 0; i < ax + k; i++) {
-        if (z[i].num >= 0) {
-            WSetColor(LIGHTGREEN);
-            DrawLine(zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z, zm[z[i].num].t);
-            continue;
-        }
-        polygon *pl = &zb[~z[i].num];
-        if(SightControl(pl->vert[0][0], pl->vert[0][1], pl->vert[0][2], 0.1)) {
-        Projection(&pt[0], pl->vert[0][0], pl->vert[0][1], pl->vert[0][2]);
-        Projection(&pt[1], pl->vert[1][0], pl->vert[1][1], pl->vert[1][2]);
-        Projection(&pt[2], pl->vert[2][0], pl->vert[2][1], pl->vert[2][2]);
-        Init(res, (cameraPos*view[0] -  pl->vert[0][0] +centre[0]), (cameraPos*view[1] - pl->vert[0][1] + centre[1]), (cameraPos*view[2] - pl->vert[0][2])+centre[2]);
-        normalize(res,3);
-        if(inner(res, pl->normal, 3) < -1e-10) Init(pl->normal, (-1)*pl->normal[0], (-1)*pl->normal[1], (-1)*pl->normal[2]);
-        reflect(light, pl->normal, vec);
-        WSetColor(cx((int)((inner(pl->normal, light, 3)/2. + 1./2.)*N_COLOR),(int)((inner(vec, res, 3)/2. + 1./2.)*BW_COLOR)));
-        invmapX(pt, xpt, 3);
-        WFillPolygon (xpt, 3);
-        }
+    // Signed volume detects winding: >0 = outward normals, <0 = inward.
+    double sv = 0, cr[3], a0[3], a1[3], a2[3];
+    for (int i = 0; i < k; i++) {
+        minus(zb[i].vert[0], gc, a0);
+        minus(zb[i].vert[1], gc, a1);
+        minus(zb[i].vert[2], gc, a2);
+        cross(a1, a2, cr);
+        sv += inner(a0, cr, 3);
     }
+    int k2 = 0;
+    for (int i = 0; i < k; i++) {
+        Init(res, cameraPos*view[0] - zb[i].vert[0][0] + centre[0],
+                  cameraPos*view[1] - zb[i].vert[0][1] + centre[1],
+                  cameraPos*view[2] - zb[i].vert[0][2] + centre[2]);
+        normalize(res, 3);
+        double d = inner(res, zb[i].normal, 3);
+        if((sv > 0) == (d < 0)) continue; // backface
+        zb[k2] = zb[i]; k2++;
+    }
+    if (FB_Begin(BLACK)) {
+        for (int i = 0; i < k2; i++) {
+            polygon *pl = &zb[i];
+            Init(res, (cameraPos*view[0] -  pl->vert[0][0] +centre[0]), (cameraPos*view[1] - pl->vert[0][1] + centre[1]), (cameraPos*view[2] - pl->vert[0][2])+centre[2]);
+            normalize(res,3);
+            if(inner(res, pl->normal, 3) < -1e-10) Init(pl->normal, (-1)*pl->normal[0], (-1)*pl->normal[1], (-1)*pl->normal[2]);
+            reflect(light, pl->normal, vec);
+            rasterTri(pl->vert, cx((int)((inner(pl->normal, light, 3)/2. + 1./2.)*N_COLOR),(int)((inner(vec, res, 3)/2. + 1./2.)*BW_COLOR)));
+        }
+        drawAxisSegs(ax);
+        FB_Flush();
+    }
+    DrawAxisLabels();
 }
 
 #define PGT 150
@@ -873,7 +967,7 @@ static int pge = -1;
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
     double dt = (ft-it)/PGT, ds = (fs-is)/PGS;
-    double u[3],w[3],tmpx[3], res[3];
+    double u[3],w[3],tmpx[3];
     int j = 0;
     SetShadingColor(MAGENTA);
     pallette(firstColor, secondColor, modeColor, N_COLOR);
@@ -898,105 +992,94 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j);
     int st = interactive ? 2 : 1;
-    for (int i = 0; i < PGT; i += st) {
-        for (int jj = 0; jj < PGS; jj += st) {
-            int v = i*(PGS + 1) + jj;
-            zm[j].x = it + i*dt; zm[j].y = is + jj*ds; zm[j].data = 0; zm[j].t = v;
-            Init(tmpx, pgv[3*v], pgv[3*v+1], pgv[3*v+2]);
-            z[j].z = inner(view, tmpx, 3); z[j].num = j; j++;
-        }
-    } radixSortPairs(z, j);
-    for (int i = 0; i < j; i++) {
-        if(zm[z[i].num].data == -1) {
-            WSetColor(LIGHTGREEN);  DrawLine(zm[z[i].num].x,zm[z[i].num].y,zm[z[i].num].z,zm[z[i].num].t);
-            continue;
-        }
-        int v = (int)zm[z[i].num].t;
-        int ci = v/(PGS + 1), cj = v%(PGS + 1);
-        int sx = ci + st <= PGT ? st : PGT - ci;
-        int sy = cj + st <= PGS ? st : PGS - cj;
-        double *p00 = &pgv[3*v], *p10 = &pgv[3*(v + sx*(PGS + 1))], *p01 = &pgv[3*(v + sy)], *p11 = &pgv[3*(v + sx*(PGS + 1) + sy)];
-        if(SightControl(p00[0], p00[1], p00[2], 0.1)) {
-            Projection(&pt[0], p00[0], p00[1], p00[2]);
-            Projection(&pt[1], p10[0], p10[1], p10[2]);
-            Projection(&pt[2], p01[0], p01[1], p01[2]);
-
-            if(modeColor == 0) WSetColor(cx((int)((0.5 + atan(COEF * p00[2])/PI)*N_COLOR), 0));
-            else {
-                Init(u, p10[0] - p00[0], p10[1] - p00[1], p10[2] - p00[2]);
-                Init(w, p01[0] - p00[0], p01[1] - p00[1], p01[2] - p00[2]);
-                cross(u, w, normal);
-                normalize(normal, 3);
-                InitV(tmpx, view);
-                Init(view, (cameraPos*view[0] - p00[0]), (cameraPos*view[1] - p00[1]), (cameraPos*view[2] - p00[2]));
-                normalize(view, 3);
-                if(inner(view, normal, 3) < 0.) { intxvec((-1), normal, res); InitV(normal, res); }
-                reflect(light, normal, res);
-
-                  WSetColor(cx((int)((inner(normal, light, 3)/2. + 1./2.)*N_COLOR), (int)((inner(view, res, 3)/2. + 1./2.)*BW_COLOR)));
-
-                InitV(view, tmpx);
+    if (FB_Begin(BLACK)) {
+        ShadeCtx sc;
+        double tri[3][3];
+        float attr[4][FB_NA], at[3][FB_NA];
+        for (int i = 0; i < PGT; i += st) {
+            for (int jj = 0; jj < PGS; jj += st) {
+                int v = i*(PGS + 1) + jj;
+                int sx = i + st <= PGT ? st : PGT - i;
+                int sy = jj + st <= PGS ? st : PGS - jj;
+                double *p00 = &pgv[3*v];
+                int na;
+                if(modeColor == 0) {
+                    na = 1;
+                    attr[0][0] = pgv[3*v + 2]; attr[1][0] = pgv[3*(v + sx*(PGS + 1)) + 2];
+                    attr[2][0] = pgv[3*(v + sy) + 2]; attr[3][0] = pgv[3*(v + sx*(PGS + 1) + sy) + 2];
+                } else {
+                    na = 3;
+                    for (int vi = 0; vi < 4; vi++) {
+                        int ti = vi == 1 || vi == 3 ? i + sx : i, sj = vi >= 2 ? jj + sy : jj;
+                        int tp = ti > 0 ? ti - 1 : ti, tn = ti < PGT ? ti + 1 : ti;
+                        int sp = sj > 0 ? sj - 1 : sj, sn = sj < PGS ? sj + 1 : sj;
+                        double *pa = &pgv[3*(tn*(PGS + 1) + sj)], *pb = &pgv[3*(tp*(PGS + 1) + sj)];
+                        double *pc = &pgv[3*(ti*(PGS + 1) + sn)], *pd = &pgv[3*(ti*(PGS + 1) + sp)];
+                        Init(u, pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]);
+                        Init(w, pc[0] - pd[0], pc[1] - pd[1], pc[2] - pd[2]);
+                        cross(u, w, tmpx);
+                        attr[vi][0] = tmpx[0]; attr[vi][1] = tmpx[1]; attr[vi][2] = tmpx[2];
+                    }
+                }
+                double *p10 = &pgv[3*(v + sx*(PGS + 1))], *p01 = &pgv[3*(v + sy)], *p11 = &pgv[3*(v + sx*(PGS + 1) + sy)];
+                Init(tri[0], p00[0], p00[1], p00[2]);
+                Init(tri[1], p10[0], p10[1], p10[2]);
+                Init(tri[2], p11[0], p11[1], p11[2]);
+                Init(sc.res, cameraPos*view[0] - p00[0] + centre[0], cameraPos*view[1] - p00[1] + centre[1], cameraPos*view[2] - p00[2] + centre[2]);
+                normalize(sc.res, 3);
+                memcpy(at[0], attr[0], sizeof(at[0])); memcpy(at[1], attr[1], sizeof(at[1])); memcpy(at[2], attr[3], sizeof(at[2]));
+                rasterTriA(tri, at, phongEnabled ? na : 0, modeColor == 0 ? shadeHeight : shadePhong, &sc,
+                           modeColor == 0 ? cx((int)((0.5 + atan(COEF * p00[2])/PI)*N_COLOR), 0) : flatShade(tri, &sc));
+                Init(tri[1], p01[0], p01[1], p01[2]);
+                memcpy(at[1], attr[2], sizeof(at[1]));
+                rasterTriA(tri, at, phongEnabled ? na : 0, modeColor == 0 ? shadeHeight : shadePhong, &sc,
+                           modeColor == 0 ? cx((int)((0.5 + atan(COEF * p00[2])/PI)*N_COLOR), 0) : flatShade(tri, &sc));
             }
-                invmapX(pt, xpt, 3);
-                WFillPolygon (xpt, 3);
-
-            Projection(&pt[0], p11[0], p11[1], p11[2]);
-
-                invmapX(pt, xpt, 3);
-                WFillPolygon (xpt, 3);
         }
+        drawAxisSegs(j);
+        FB_Flush();
     }
+    DrawAxisLabels();
 }
 
-
 void DrawPolytope(Face *f, int n) {
-    double tmpx[3], a = 0, b = 0, c = 0, u[3], w[3]; Point vert[10]; XPoint vertx[10];
+    double a = 0, b = 0, c = 0, u[3], w[3];
     VectorSight();
     SetShadingColor(BLUE);
     pallette(RED, BLUE, 1, N_COLOR);
     if(key == 0) InitCameraPosition(5, 2);
+    if (!FB_Begin(BLACK)) return;
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < f[i].n; j++) {
             a += f[i].vertex[0][j]/(f[i].n);
             b += f[i].vertex[1][j]/(f[i].n);
             c += f[i].vertex[2][j]/(f[i].n);
         }
-        Init(tmpx, cameraPos*view[0] - a,
-             cameraPos*view[1] - b,
-             cameraPos*view[2] - c);
-        z[i].z = inner(tmpx, tmpx, 3); z[i].num = i;
-        a = 0; b = 0; c = 0;
-    } a = 0; b = 0; c = 0;
-    radixSortPairs(z, n);
-    for (int i = n - 1; i >= 0; i--) {
-        for (int j = 0; j < f[i].n; j++) {
-            a += f[z[i].num].vertex[0][j]/(f[z[i].num].n);
-            b += f[z[i].num].vertex[1][j]/(f[z[i].num].n);
-            c += f[z[i].num].vertex[2][j]/(f[z[i].num].n);
-        } Init(tmpx, a, b, c);
-        if(SightControl(a, b, c, 0.01)) {
-        Init(u, f[z[i].num].vertex[0][1] - f[z[i].num].vertex[0][0],
-            f[z[i].num].vertex[1][1]-f[z[i].num].vertex[1][0],
-                 f[z[i].num].vertex[2][1]-f[z[i].num].vertex[2][0]);
-        Init(w, f[z[i].num].vertex[0][f[z[i].num].n-1] - f[z[i].num].vertex[0][0],
-            f[z[i].num].vertex[1][f[z[i].num].n-1]-f[z[i].num].vertex[1][0],
-                 f[z[i].num].vertex[2][f[z[i].num].n-1]-f[z[i].num].vertex[2][0]);
-        cross(u,w,normal);
-        if(inner(normal, tmpx, 3) < 0) Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
+        Init(u, f[i].vertex[0][1] - f[i].vertex[0][0],
+            f[i].vertex[1][1]-f[i].vertex[1][0],
+                 f[i].vertex[2][1]-f[i].vertex[2][0]);
+        Init(w, f[i].vertex[0][f[i].n-1] - f[i].vertex[0][0],
+            f[i].vertex[1][f[i].n-1]-f[i].vertex[1][0],
+                 f[i].vertex[2][f[i].n-1]-f[i].vertex[2][0]);
+        cross(u, w, normal);
+        Init(u, cameraPos*view[0] - a, cameraPos*view[1] - b, cameraPos*view[2] - c);
+        if(inner(normal, u, 3) < 0)
+            Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
         normalize(normal, 3);
-        Init(u, (cameraPos*view[0] -  f[z[i].num].vertex[0][0] +centre[0]), (cameraPos*view[1] - f[z[i].num].vertex[0][1] + centre[1]), (cameraPos*view[2] - f[z[i].num].vertex[0][2])+centre[2]);
+        Init(u, (cameraPos*view[0] -  f[i].vertex[0][0] +centre[0]), (cameraPos*view[1] - f[i].vertex[0][1] + centre[1]), (cameraPos*view[2] - f[i].vertex[0][2])+centre[2]);
         normalize(u,3);
         reflect(light, normal, w);
-        WSetColor(cx((int)((inner(normal, light, 3)/2. + 1./2.)*N_COLOR), (int)((inner(w, u, 3)/2. + 1./2.)*BW_COLOR)));
-        for (int j = 0; j < f[z[i].num].n; j++)
-                Projection(&vert[j], f[z[i].num].vertex[0][j],
-                       f[z[i].num].vertex[1][j],
-                       f[z[i].num].vertex[2][j]);
-        
-        invmapX(vert, vertx, f[z[i].num].n);
-        WFillPolygon (vertx, f[z[i].num].n);
-        } a = 0; b = 0; c = 0;
-  }
+        unsigned long col = cx((int)((inner(normal, light, 3)/2. + 1./2.)*N_COLOR), (int)((inner(w, u, 3)/2. + 1./2.)*BW_COLOR));
+        for (int j = 1; j + 1 < f[i].n; j++) {
+            double tri[3][3];
+            Init(tri[0], f[i].vertex[0][0], f[i].vertex[1][0], f[i].vertex[2][0]);
+            Init(tri[1], f[i].vertex[0][j], f[i].vertex[1][j], f[i].vertex[2][j]);
+            Init(tri[2], f[i].vertex[0][j+1], f[i].vertex[1][j+1], f[i].vertex[2][j+1]);
+            rasterTri(tri, col);
+        }
+        a = 0; b = 0; c = 0;
+    }
+    FB_Flush();
 }
     
 

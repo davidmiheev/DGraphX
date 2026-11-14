@@ -104,6 +104,7 @@ typedef struct {
 extern int renderEpoch;
 extern int interactive;
 extern int refineEnabled;
+extern int phongEnabled;
 
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double*, int*,double,double);
@@ -152,6 +153,15 @@ void SetLineWidth(int);
 void SetLineStyle(int style);
 
 void WSetFillStyle (int style);
+int FB_Begin (unsigned long bg);
+void FB_Tri (double, double, double, double, double, double,
+	     double, double, double, unsigned long);
+void FB_Seg (double, double, double, double, double, double, unsigned long);
+void FB_TriA (double, double, double, const float *,
+	      double, double, double, const float *,
+	      double, double, double, const float *,
+	      int, unsigned long (*) (const float *, void *), void *);
+void FB_Flush (void);
 
 void SetFont(const char* name);
 
@@ -172,6 +182,7 @@ void InitialPosition ();
 void RotateX(int mode);
 void RotateY(int mode);
 void RotateZ(int mode);
+void RotateDrag(double dx, double dy);
 void RotateX_Angle(double angle);
 void RotateY_Angle(double angle);
 void RotateZ_Angle(double angle);

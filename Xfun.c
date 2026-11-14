@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include <math.h>
 #include <sys/select.h>
 
 #include <X11/Xlib.h>
@@ -120,6 +122,15 @@ static XGCValues val;
 int renderEpoch = 0;
 int interactive = 0;
 int refineEnabled = 1;
+int phongEnabled = 1;
+#define FB_MAXATTR 4
+static XImage *fbImg = NULL;
+static uint32_t *fbPix = NULL;
+static float *fbZ = NULL;
+static int fbW = 0, fbH = 0;
+static Visual *fbVisual = NULL;
+static int fbVisualDepth = 0;
+
 COLORS rColors;
 
 int width = WND_WDT;
@@ -161,6 +172,8 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
       width = rAttributes.width;
       height = rAttributes.height;
       nDepth = rAttributes.depth;
+      fbVisual = rAttributes.visual;
+      fbVisualDepth = rAttributes.depth;
     } else return X11_ERR_5;
 
   draw = XCreatePixmap (prDisplay, nWnd, PIXMAP_SIZE, PIXMAP_SIZE, nDepth);
@@ -334,6 +347,123 @@ void WFillPolygon (XPoint * points, int num) {
    /* FillSolid, FillTiled, FillStippled, FillOpaeueStippled. */
 void WSetFillStyle (int Style) {
   XSetFillStyle (prDisplay, prGC, Style);
+}
+
+//======= software z-buffered framebuffer ========
+static int fbEnsure (void) {
+  if (width <= 0 || height <= 0 || !fbVisual) return 0;
+  if (fbW == width && fbH == height && fbImg && fbPix && fbZ) return 1;
+  if (fbImg) { XDestroyImage (fbImg); fbImg = NULL; }
+  free (fbPix); free (fbZ); fbPix = NULL; fbZ = NULL;
+  fbW = width; fbH = height;
+  fbPix = malloc ((size_t)fbW*fbH*sizeof (*fbPix));
+  fbZ = malloc ((size_t)fbW*fbH*sizeof (*fbZ));
+  fbImg = XCreateImage (prDisplay, fbVisual, fbVisualDepth, ZPixmap, 0,
+			malloc ((size_t)fbW*fbH*4), fbW, fbH, 32, fbW*4);
+  if (!fbPix || !fbZ || !fbImg || !fbImg->data) return 0;
+  return 1;
+}
+
+int FB_Begin (unsigned long bg) {
+  if (!fbEnsure ()) return 0;
+  for (long i = 0; i < (long)fbW*fbH; i++) {
+    fbPix[i] = (uint32_t)bg; fbZ[i] = 0.f;
+  }
+  return 1;
+}
+
+void FB_Tri (double ax, double ay, double aq,
+	     double bx, double by, double bq,
+	     double cx2, double cy2, double cq,
+	     unsigned long col) {
+  double denom = (bx - ax)*(cy2 - ay) - (cx2 - ax)*(by - ay);
+  if (denom == 0) return;
+  int xlo = (int)fmin (ax, fmin (bx, cx2)), xhi = (int)ceil (fmax (ax, fmax (bx, cx2)));
+  int ylo = (int)fmin (ay, fmin (by, cy2)), yhi = (int)ceil (fmax (ay, fmax (by, cy2)));
+  if (xlo < 0) xlo = 0;
+  if (ylo < 0) ylo = 0;
+  if (xhi >= fbW) xhi = fbW - 1;
+  if (yhi >= fbH) yhi = fbH - 1;
+  if (xlo > xhi || ylo > yhi) return;
+  double inv = 1./denom;
+  for (int y = ylo; y <= yhi; y++) {
+    double py = y + 0.5;
+    long row = (long)y*fbW;
+    for (int x = xlo; x <= xhi; x++) {
+      double px = x + 0.5;
+      double w0 = ((bx - px)*(cy2 - py) - (cx2 - px)*(by - py))*inv;
+      double w1 = ((cx2 - px)*(ay - py) - (ax - px)*(cy2 - py))*inv;
+      double w2 = 1. - w0 - w1;
+      if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+      float q = (float)(w0*aq + w1*bq + w2*cq);
+      long idx = row + x;
+      if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)col; }
+    }
+  }
+}
+
+// Attribute-interpolating triangle: per-pixel shade callback gets the
+// interpolated attributes and returns the pixel color.
+void FB_TriA (double ax, double ay, double aq, const float *a0,
+	      double bx, double by, double bq, const float *a1,
+	      double cx2, double cy2, double cq, const float *a2,
+	      int na, unsigned long (*shade) (const float *, void *), void *ctx) {
+  double denom = (bx - ax)*(cy2 - ay) - (cx2 - ax)*(by - ay);
+  if (denom == 0) return;
+  int xlo = (int)fmin (ax, fmin (bx, cx2)), xhi = (int)ceil (fmax (ax, fmax (bx, cx2)));
+  int ylo = (int)fmin (ay, fmin (by, cy2)), yhi = (int)ceil (fmax (ay, fmax (by, cy2)));
+  if (xlo < 0) xlo = 0;
+  if (ylo < 0) ylo = 0;
+  if (xhi >= fbW) xhi = fbW - 1;
+  if (yhi >= fbH) yhi = fbH - 1;
+  if (xlo > xhi || ylo > yhi) return;
+  double inv = 1./denom;
+  float at[FB_MAXATTR];
+  for (int y = ylo; y <= yhi; y++) {
+    double py = y + 0.5;
+    long row = (long)y*fbW;
+    for (int x = xlo; x <= xhi; x++) {
+      double px = x + 0.5;
+      double w0 = ((bx - px)*(cy2 - py) - (cx2 - px)*(by - py))*inv;
+      double w1 = ((cx2 - px)*(ay - py) - (ax - px)*(cy2 - py))*inv;
+      double w2 = 1. - w0 - w1;
+      if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+      float q = (float)(w0*aq + w1*bq + w2*cq);
+      long idx = row + x;
+      if (q <= fbZ[idx]) continue;
+      for (int k = 0; k < na; k++) at[k] = w0*a0[k] + w1*a1[k] + w2*a2[k];
+      fbZ[idx] = q; fbPix[idx] = (uint32_t)shade (at, ctx);
+    }
+  }
+}
+
+void FB_Seg (double ax, double ay, double aq,
+	     double bx, double by, double bq,
+	     unsigned long col) {
+  int steps = (int)fmax (fabs (bx - ax), fabs (by - ay));
+  for (int i = 0; i <= steps; i++) {
+    double t = steps ? (double)i/steps : 0.;
+    int x = (int)(ax + (bx - ax)*t + 0.5), y = (int)(ay + (by - ay)*t + 0.5);
+    if (x < 0 || x >= fbW || y < 0 || y >= fbH) continue;
+    float q = (float)(aq + (bq - aq)*t);
+    long idx = (long)y*fbW + x;
+    if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)col; }
+  }
+}
+
+void FB_Flush (void) {
+  if (!fbImg || !fbPix) return;
+  if (fbImg->bits_per_pixel == 32) {
+    for (int y = 0; y < fbH; y++) {
+      uint32_t *dst = (uint32_t *)(fbImg->data + (long)y*fbImg->bytes_per_line);
+      for (int x = 0; x < fbW; x++) dst[x] = fbPix[(long)y*fbW + x];
+    }
+  } else {
+    for (int y = 0; y < fbH; y++)
+      for (int x = 0; x < fbW; x++)
+	XPutPixel (fbImg, x, y, fbPix[(long)y*fbW + x]);
+  }
+  XPutImage (prDisplay, draw, prGC, fbImg, 0, 0, x_0, y_0, fbW, fbH);
 }
 
 int WGetColor (unsigned int red, unsigned int green, unsigned int blue, unsigned long *myColor) {

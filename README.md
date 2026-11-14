@@ -33,6 +33,7 @@ Important keyboard commands for the 3D mode:
 * You can also change the light source position: first press **l** key and change the position of the light source with **<-** and **->** keys, then again press **l** key
 * You can also change the color method with **L** key (not **l** key)
 * **R** key toggles progressive refinement (half-resolution rendering while interacting, full resolution when idle)
+* **P** key toggles Phong shading (smooth per-pixel normals) vs flat facet shading
 * To quit press **q**
 
 Mouse commands for the 3D mode:

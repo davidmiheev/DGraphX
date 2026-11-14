@@ -228,8 +228,7 @@ int MouseEventHandler(int type, int x, int y, int button) {
                 count = 1;
             }
             if (active_button == Button1) {
-                RotateY_Angle(dx * 0.005);
-                RotateX_Angle(dy * 0.005);
+                RotateDrag(dx, dy);
                 return KEY_PRESS_EXPOSE;
             } else if (active_button == Button3) {
                 ChangeCameraPosition(dy * 0.1);
@@ -800,6 +799,11 @@ static int KeyPressFunction (int nKeySym) {
         case XK_r:
             refineEnabled = !refineEnabled;
             printf("[DGraphX] Progressive refinement %s\n", refineEnabled ? "ON" : "OFF");
+            break;
+        case XK_P:
+        case XK_p:
+            phongEnabled = !phongEnabled;
+            printf("[DGraphX] Phong shading %s\n", phongEnabled ? "ON" : "OFF");
             break;
         case XK_0:
             variant = 0;
