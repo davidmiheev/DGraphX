@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/select.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -117,6 +118,7 @@ static Drawable draw;
 static Font font;
 static XGCValues val;
 int renderEpoch = 0;
+int interactive = 0;
 COLORS rColors;
 
 int width = WND_WDT;
@@ -168,7 +170,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
     
   //=========== XLoop ==============
   FOREVER {
-      int redraw = 0, quit = 0, ev = 0;
+      int redraw = 0, quit = 0, ev = 0, hadInput = 0;
 
       XNextEvent (prDisplay, &rEvent);
 
@@ -198,6 +200,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
                   break;
 
               case KeyPress:
+                  hadInput = 1;
                   XLookupString (&rEvent.xkey, NULL, 0, &nKeySym, NULL);
                   switch (KeyPressFunction (nKeySym)) {
                       case KEY_PRESS_NOTHING:
@@ -214,6 +217,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
               case ButtonPress:
               case ButtonRelease:
               case MotionNotify:
+                  hadInput = 1;
                   if (rEvent.type == MotionNotify)
                       while (XCheckTypedWindowEvent (prDisplay, nWnd, MotionNotify, &rEvent));
                   if (MouseFunc) {
@@ -241,8 +245,25 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
       }
 
       if (redraw) {
-          DrawWindowContent (x,n,a,b);
-          XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+          if (hadInput) {
+              // Mid-interaction: render a coarse frame, then wait briefly —
+              // if no new input arrives within 40ms the burst has ended and
+              // we follow up with a full-resolution frame.
+              fd_set fds; struct timeval tv;
+              interactive = 1;
+              DrawWindowContent (x,n,a,b);
+              XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+              interactive = 0;
+              FD_ZERO(&fds); FD_SET(ConnectionNumber (prDisplay), &fds);
+              tv.tv_sec = 0; tv.tv_usec = 40000;
+              if (select (ConnectionNumber (prDisplay) + 1, &fds, NULL, NULL, &tv) == 0) {
+                  DrawWindowContent (x,n,a,b);
+                  XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+              }
+          } else {
+              DrawWindowContent (x,n,a,b);
+              XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+          }
       }
     }
    //======================================

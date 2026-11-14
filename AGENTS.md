@@ -159,3 +159,15 @@ GitHub Actions runs on every push to `master` and on pull requests. It simply ex
 11. **Add clang-format config** - No code formatting standard enforced.
 
 12. **Consider XRM (X11 Resource Manager)** - For theme/font preferences instead of hardcoded Adobe Helvetica font names.
+
+### From the old GEMINI.md roadmap
+
+13. **CLI arguments** - Flags for initial mode (2D/3D), data file path, camera settings.
+
+14. **Makefile portability** - Replace hardcoded `/opt/X11` paths with `pkg-config` for cross-distro builds.
+
+15. **Context struct for global state** - Encapsulate the `extern` globals into a struct to improve testability.
+
+16. **Headless smoke tests** - Use `Xvfb` in CI to run basic startup/render checks.
+
+17. **Portability layer** - SDL2/GLFW abstraction if support beyond X11 is ever needed.

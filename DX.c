@@ -594,29 +594,32 @@ void DrawLinear3D(double* a, int n, unsigned long Color, int mode) {
     if(key == 0)  InitCameraPosition(10, 20);
     int ax = 0;
     if(mode) DrawAxes(&ax);
-    for(int i = 0; i < n - 1; i++) {
-        for(int j = 0; j < n - 1; j++) { //zb[k].n = 3;
+    int st = interactive ? 2 : 1;
+    for(int i = 0; i < n - 1; i += st) {
+        int sy = i + st <= n - 1 ? st : n - 1 - i;
+        for(int j = 0; j < n - 1; j += st) { //zb[k].n = 3;
+            int sx = j + st <= n - 1 ? st : n - 1 - j;
             Init(zb[k].vert[0], j*h - 5, i*h - 5, ZS(a[i*n + j]));
-            Init(zb[k].vert[1], (j+1)*h - 5, i*h - 5, ZS(a[i*n + j+1]));
-            Init(zb[k].vert[2], j*h - 5, (i+1)*h - 5, ZS(a[(i+1)*n + j]));
+            Init(zb[k].vert[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j+sx]));
+            Init(zb[k].vert[2], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
             plus(zb[k].vert[0], zb[k].vert[1], vec);
             plus(vec, zb[k].vert[2], vec);
             intxvec(1./3., vec, vec);
             minus(vec, centre, vec);
             z[ax + k].z = inner(view, vec, 3); z[ax + k].num = ~k;
-            Init(vec, h, 0, (a[i*n + j + 1] - a[i*n + j])*zscale);
-            Init(res, 0, h, (a[(i+1)*n + j] - a[i*n + j])*zscale);
+            Init(vec, sx*h, 0, (a[i*n + j + sx] - a[i*n + j])*zscale);
+            Init(res, 0, sy*h, (a[(i+sy)*n + j] - a[i*n + j])*zscale);
             cross(vec, res, zb[k].normal); //zb[k + 1].n = 3;
-            Init(zb[k+1].vert[0], j*h - 5, (i+1)*h - 5, ZS(a[(i+1)*n + j]));
-            Init(zb[k+1].vert[1], (j+1)*h - 5, i*h - 5, ZS(a[i*n + j+1]));
-            Init(zb[k+1].vert[2], (j+1)*h - 5, (i+1)*h - 5, ZS(a[(i+1)*n + j+1]));
+            Init(zb[k+1].vert[0], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
+            Init(zb[k+1].vert[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j+sx]));
+            Init(zb[k+1].vert[2], (j+sx)*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j+sx]));
             plus(zb[k+1].vert[0], zb[k+1].vert[1], vec);
             plus(vec, zb[k+1].vert[2], vec);
             intxvec(1./3., vec, vec);
             minus(vec, centre, vec);
             z[ax + k + 1].z = inner(view, vec,3); z[ax + k + 1].num = ~(k + 1);
-            Init(vec, h, 0, (a[(i+1)*n + j + 1] - a[(i+1)*n + j])*zscale);
-            Init(res, 0, h, (a[(i+1)*n + j + 1] - a[i*n + j + 1])*zscale);
+            Init(vec, sx*h, 0, (a[(i+sy)*n + j + sx] - a[(i+sy)*n + j])*zscale);
+            Init(res, 0, sy*h, (a[(i+sy)*n + j + sx] - a[i*n + j + sx])*zscale);
             cross(vec, res, zb[k+1].normal);
             k+=2;
         }
@@ -657,6 +660,7 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     static int ge = -1, gn = -1, gnxc = -1;
     static double ga = 1e30, gb = 1e30;
     int nxc = (int)((b - a)/dx + 0.5), nyc = (int)((b - a)/dy + 0.5), nxv = nxc + 1, nf = n*nxv*(nyc + 1);
+    int st = interactive ? 2 : 1;
     if(ge != renderEpoch || gn != n || gnxc != nxc || ga != a || gb != b) {
         if((size_t)nf > gcap) {
             free(gv); free(gm); gcap = 0;
@@ -683,8 +687,8 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     if(mode) DrawAxes(&j); //printf("%d:(\n", j);
     if(gv && gm)
     for(int i = 0; i < n; i++) {
-        for (int iy = 0; iy < nyc; iy++) {
-            for (int ix = 0; ix < nxc; ix++) {
+        for (int iy = 0; iy < nyc; iy += st) {
+            for (int ix = 0; ix < nxc; ix += st) {
                 int vi = iy*nxv + ix;
                 double x = a + ix*dx, y = a + iy*dy;
                 zm[j].x = x; zm[j].y = y; zm[j].z = gv[i*nf/n + vi];
@@ -700,19 +704,22 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
             continue;
         }
         int v = (int)zm[z[i].num].t, d = zm[z[i].num].data;
+        int cix = v % nxv, ciy = v / nxv;
+        int sx = cix + st <= nxc ? st : nxc - cix;
+        int sy = ciy + st <= nyc ? st : nyc - ciy;
         double *gv_ = &gv[d*nf/n], *gm_ = &gm[d*nf/n];
         if(SightControl(zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z, 0.1)) {
             Projection(&pt[0], zm[z[i].num].x, zm[z[i].num].y, zm[z[i].num].z);
-            Projection(&pt[1], zm[z[i].num].x + EPS_X, zm[z[i].num].y, gv_[v + 1]);
+            Projection(&pt[1], zm[z[i].num].x + sx*dx, zm[z[i].num].y, gv_[v + sx]);
 
-            if(EPS_X*EPS_Y > 1e-2) Projection(&pt[2], zm[z[i].num].x, zm[z[i].num].y + EPS_Y, gv_[v + nxv]);
+            if(EPS_X*EPS_Y > 1e-2) Projection(&pt[2], zm[z[i].num].x, zm[z[i].num].y + sy*dy, gv_[v + sy*nxv]);
 
-            else Projection(&pt[2], zm[z[i].num].x + EPS_X, zm[z[i].num].y + EPS_Y, gv_[v + nxv + 1]);
+            else Projection(&pt[2], zm[z[i].num].x + sx*dx, zm[z[i].num].y + sy*dy, gv_[v + sx + sy*nxv]);
 
             if(modeColor == 0)  WSetColor(cx((int)((0.5 + atan(COEF * gm_[v])/PI)*N_COLOR),0));//[0]
             else {
-                Init(u, 0, EPS_Y, (gv_[v + nxv] - zm[z[i].num].z));
-                Init(w, EPS_X, 0, (gv_[v + 1] - zm[z[i].num].z));
+                Init(u, 0, sy*EPS_Y, (gv_[v + sy*nxv] - zm[z[i].num].z));
+                Init(w, sx*EPS_X, 0, (gv_[v + sx] - zm[z[i].num].z));
                 cross(u, w, normal);
                 normalize(normal, 3);
                 InitV(tmp, view);
@@ -724,14 +731,14 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                 InitV(view, tmp);
             }
             if(EPS_X*EPS_Y < 1e-2)  {
-                Projection(&pt[3], zm[z[i].num].x, zm[z[i].num].y + EPS_Y, gv_[v + nxv]);
+                Projection(&pt[3], zm[z[i].num].x, zm[z[i].num].y + sy*dy, gv_[v + sy*nxv]);
                 invmapX(pt, xpt, 4);
                 WFillPolygon (xpt, 4);
             } else {
             invmapX(pt, xpt, 3); //DrawLineX(p1.x,p1.y,p2.x,p2.y,p,q);
             WFillPolygon (xpt, 3);
 
-            Projection(&pt[0], zm[z[i].num].x + EPS_X, zm[z[i].num].y + EPS_Y, gv_[v + nxv + 1]);
+            Projection(&pt[0], zm[z[i].num].x + sx*dx, zm[z[i].num].y + sy*dy, gv_[v + sx + sy*nxv]);
 
                 invmapX(pt, xpt, 3);
                 WFillPolygon (xpt, 3);
@@ -795,11 +802,12 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&ax);
-    for (int i = 1; i <= NT; i++) {
+    int st = interactive ? 2 : 1;
+    for (int i = st; i <= NT; i += st) {
         for (int j = 0; j < TUBE_NR; j++) {
             int jn = (j + 1) % TUBE_NR;
-            tubeTri(k, rings[i-1][j], rings[i-1][jn], rings[i][j]);
-            tubeTri(k + 1, rings[i][j], rings[i-1][jn], rings[i][jn]);
+            tubeTri(k, rings[i-st][j], rings[i-st][jn], rings[i][j]);
+            tubeTri(k + 1, rings[i][j], rings[i-st][jn], rings[i][jn]);
             k += 2;
         }
     }
@@ -860,8 +868,9 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j);
-    for (int i = 0; i < PGT; i++) {
-        for (int jj = 0; jj < PGS; jj++) {
+    int st = interactive ? 2 : 1;
+    for (int i = 0; i < PGT; i += st) {
+        for (int jj = 0; jj < PGS; jj += st) {
             int v = i*(PGS + 1) + jj;
             zm[j].x = it + i*dt; zm[j].y = is + jj*ds; zm[j].data = 0; zm[j].t = v;
             Init(tmpx, pgv[3*v], pgv[3*v+1], pgv[3*v+2]);
@@ -874,7 +883,10 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
             continue;
         }
         int v = (int)zm[z[i].num].t;
-        double *p00 = &pgv[3*v], *p10 = &pgv[3*(v + PGS + 1)], *p01 = &pgv[3*(v + 1)], *p11 = &pgv[3*(v + PGS + 2)];
+        int ci = v/(PGS + 1), cj = v%(PGS + 1);
+        int sx = ci + st <= PGT ? st : PGT - ci;
+        int sy = cj + st <= PGS ? st : PGS - cj;
+        double *p00 = &pgv[3*v], *p10 = &pgv[3*(v + sx*(PGS + 1))], *p01 = &pgv[3*(v + sy)], *p11 = &pgv[3*(v + sx*(PGS + 1) + sy)];
         if(SightControl(p00[0], p00[1], p00[2], 0.1)) {
             Projection(&pt[0], p00[0], p00[1], p00[2]);
             Projection(&pt[1], p10[0], p10[1], p10[2]);
