@@ -58,6 +58,17 @@ extern int x_0, y_0;
 - Evaluation goes through globals `cur_x/cur_y/cur_t/cur_s` - the wrappers are NOT reentrant
 - `df()` is a central finite difference of `f()`, used by Hermite/spline interpolation
 
+### Rendering pipeline (DX.c)
+- Painter's algorithm: primitives (axis segments in `z[]`/`zm[]`, triangles in `zb[]`) are
+  depth-sorted by `inner(view, centroid)` and drawn far-to-near. `radixSortPairs()` does the
+  sort (quantized uint32 keys, in-place on `Pair.z`); `polygon` entries are sorted indirectly
+  via `z[]` pairs with `num = ~index` (negative marks polys, non-negative is a `zm[]` line).
+- Tessellation is cached per `renderEpoch` (global, bumped only on geometry-affecting keys:
+  `i` edits, `+`/`-`, `Tab`). Cached: `pgv` (parametric surface verts), `gv`/`gm` (z=f(x,y)
+  grids), `rings` (tube cross-sections). Camera moves only re-project + re-sort.
+- The event loop in `Xfun.c` processes queued X events in batches (cap 64) and redraws once
+  per batch — don't add per-event drawing calls.
+
 ### Color Macros
 Colors accessed via global `rColors` struct:
 ```c
@@ -143,7 +154,7 @@ GitHub Actions runs on every push to `master` and on pull requests. It simply ex
 
 9. **Improve error handling** - Font loading failures print to stdout rather than proper error reporting. Some X11 errors aren't caught.
 
-10. **Mouse support exists** (drag rotate/pan, right-drag zoom, scroll wheel) - could add motion-event coalescing to avoid one full redraw per MotionNotify.
+10. **Mouse support exists** (drag rotate/pan, right-drag zoom, scroll wheel) with event batching - could add a redraw-rate cap for very fast scroll floods.
 
 11. **Add clang-format config** - No code formatting standard enforced.
 
