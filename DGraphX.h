@@ -103,6 +103,7 @@ typedef struct {
 
 extern int renderEpoch;
 extern int interactive;
+extern int refineEnabled;
 
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double*, int*,double,double);

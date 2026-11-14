@@ -796,6 +796,11 @@ static int KeyPressFunction (int nKeySym) {
             key_11 = 1;
             renderEpoch++;
             break;
+        case XK_R:
+        case XK_r:
+            refineEnabled = !refineEnabled;
+            printf("[DGraphX] Progressive refinement %s\n", refineEnabled ? "ON" : "OFF");
+            break;
         case XK_0:
             variant = 0;
             break;

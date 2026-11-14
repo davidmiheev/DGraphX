@@ -119,6 +119,7 @@ static Font font;
 static XGCValues val;
 int renderEpoch = 0;
 int interactive = 0;
+int refineEnabled = 1;
 COLORS rColors;
 
 int width = WND_WDT;
@@ -245,7 +246,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
       }
 
       if (redraw) {
-          if (hadInput) {
+          if (hadInput && refineEnabled) {
               // Mid-interaction: render a coarse frame, then wait briefly —
               // if no new input arrives within 40ms the burst has ended and
               // we follow up with a full-resolution frame.

@@ -747,22 +747,34 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     }
 }
 
-static void tubeRing(double (*curvefun[]) (double), double t, double ftol, double r, double ring[][3]) {
-    double P[3], T[3], ref[3], n1[3], n2[3];
+static void tubeTangent(double (*curvefun[]) (double), double t, double ftol, double P[3], double T[3]) {
     Init(P, curvefun[0](t), curvefun[1](t), curvefun[2](t));
     Init(T, curvefun[0](t+ftol) - curvefun[0](t-ftol), curvefun[1](t+ftol) - curvefun[1](t-ftol), curvefun[2](t+ftol) - curvefun[2](t-ftol));
     if(inner(T, T, 3) < 1e-18) Init(T, 1., 0., 0.);
     normalize(T, 3);
-    Init(ref, 0., 1., 0.);
-    cross(T, ref, n1);
-    if(inner(n1, n1, 3) < 1e-12) { Init(ref, 1., 0., 0.); cross(T, ref, n1); }
-    normalize(n1, 3);
-    cross(T, n1, n2);
-    normalize(n2, 3);
+}
+
+static void tubeRingAt(double P[3], double n1[3], double n2[3], double r, double ring[][3]) {
     for (int j = 0; j < TUBE_NR; j++)
         Init(ring[j], P[0] + r*(cos(2.*PI*j/TUBE_NR)*n1[0] + sin(2.*PI*j/TUBE_NR)*n2[0]),
              P[1] + r*(cos(2.*PI*j/TUBE_NR)*n1[1] + sin(2.*PI*j/TUBE_NR)*n2[1]),
              P[2] + r*(cos(2.*PI*j/TUBE_NR)*n1[2] + sin(2.*PI*j/TUBE_NR)*n2[2]));
+}
+
+// Rotate v by the rotation taking unit tangent a to unit tangent b (Rodrigues).
+static void transportFrame(double a[3], double b[3], double v[3]) {
+    double ax[3], cr[3], res[3];
+    cross(a, b, ax);
+    double s2 = inner(ax, ax, 3);
+    if(s2 < 1e-18) return;
+    double sn = sqrt(s2), c = inner(a, b, 3), d;
+    intxvec(1./sn, ax, ax);
+    cross(ax, v, cr);
+    d = inner(ax, v, 3);
+    Init(res, v[0]*c + cr[0]*sn + ax[0]*d*(1. - c),
+         v[1]*c + cr[1]*sn + ax[1]*d*(1. - c),
+         v[2]*c + cr[2]*sn + ax[2]*d*(1. - c));
+    InitV(v, res);
 }
 
 static void tubeTri(int k, double v0[3], double v1[3], double v2[3]) {
@@ -797,7 +809,24 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
         }
         r = (nearY - farY)/40.;
         if(r < 0.05) r = 0.05;
-        for (int i = 0; i <= NT; i++) tubeRing(curvefun, it + i*dt, ftol, r, rings[i]);
+        double P[3], T[3], Tp[3], ref[3], n1[3], n2[3];
+        tubeTangent(curvefun, it, ftol, P, Tp);
+        Init(ref, 0., 1., 0.);
+        cross(Tp, ref, n1);
+        if(inner(n1, n1, 3) < 1e-12) { Init(ref, 1., 0., 0.); cross(Tp, ref, n1); }
+        normalize(n1, 3);
+        cross(Tp, n1, n2);
+        normalize(n2, 3);
+        tubeRingAt(P, n1, n2, r, rings[0]);
+        for (int i = 1; i <= NT; i++) {
+            tubeTangent(curvefun, it + i*dt, ftol, P, T);
+            transportFrame(Tp, T, n1);
+            normalize(n1, 3);
+            cross(T, n1, n2);
+            normalize(n2, 3);
+            tubeRingAt(P, n1, n2, r, rings[i]);
+            InitV(Tp, T);
+        }
         tre = renderEpoch;
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));

@@ -140,7 +140,7 @@ GitHub Actions runs on every push to `master` and on pull requests. It simply ex
 
 ### Medium Priority
 
-4. **Refactor DGraphX.c** (666 lines) - This file mixes math function definitions, drawing logic, keyboard handling, and main(). Could be split into separate modules.
+4. **Refactor DGraphX.c** - This file mixes math function definitions, drawing logic, keyboard handling, and main(). Could be split into separate modules.
 
 5. **Fix Makefile typos** - `OPTIMAZE_*` variables should be `OPTIMIZE_*`.
 
@@ -150,24 +150,20 @@ GitHub Actions runs on every push to `master` and on pull requests. It simply ex
 
 ### Lower Priority
 
-8. **Extract plottable functions to config** - Instead of editing `DGraphX.c` and recompiling, support a function definition file.
+8. **Improve error handling** - Font loading failures print to stdout rather than proper error reporting. Some X11 errors aren't caught.
 
-9. **Improve error handling** - Font loading failures print to stdout rather than proper error reporting. Some X11 errors aren't caught.
+9. **Redraw-rate cap** - Event batching already collapses input floods into one redraw per batch; a cap (~30fps) could bound worst-case CPU during fast scrolls.
 
-10. **Mouse support exists** (drag rotate/pan, right-drag zoom, scroll wheel) with event batching - could add a redraw-rate cap for very fast scroll floods.
+10. **Add clang-format config** - No code formatting standard enforced.
 
-11. **Add clang-format config** - No code formatting standard enforced.
-
-12. **Consider XRM (X11 Resource Manager)** - For theme/font preferences instead of hardcoded Adobe Helvetica font names.
+11. **Consider XRM (X11 Resource Manager)** - For theme/font preferences instead of hardcoded Adobe Helvetica font names.
 
 ### From the old GEMINI.md roadmap
 
-13. **CLI arguments** - Flags for initial mode (2D/3D), data file path, camera settings.
+12. **CLI arguments** - Flags for initial mode (2D/3D), data file path, camera settings.
 
-14. **Makefile portability** - Replace hardcoded `/opt/X11` paths with `pkg-config` for cross-distro builds.
+13. **Makefile portability** - Replace hardcoded `/opt/X11` paths with `pkg-config` for cross-distro builds.
 
-15. **Context struct for global state** - Encapsulate the `extern` globals into a struct to improve testability.
+14. **Context struct for global state** - Encapsulate the `extern` globals into a struct to improve testability.
 
-16. **Headless smoke tests** - Use `Xvfb` in CI to run basic startup/render checks.
-
-17. **Portability layer** - SDL2/GLFW abstraction if support beyond X11 is ever needed.
+15. **Headless smoke tests** - Use `Xvfb` in CI to run basic startup/render checks.

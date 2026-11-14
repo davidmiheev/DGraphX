@@ -32,6 +32,7 @@ Important keyboard commands for the 3D mode:
 * **C** key for zoom in, **V** key for zoom out.
 * You can also change the light source position: first press **l** key and change the position of the light source with **<-** and **->** keys, then again press **l** key
 * You can also change the color method with **L** key (not **l** key)
+* **R** key toggles progressive refinement (half-resolution rendering while interacting, full resolution when idle)
 * To quit press **q**
 
 Mouse commands for the 3D mode:
