@@ -116,6 +116,7 @@ static Window nWnd;
 static Drawable draw;
 static Font font;
 static XGCValues val;
+int renderEpoch = 0;
 COLORS rColors;
 
 int width = WND_WDT;

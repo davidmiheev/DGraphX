@@ -599,10 +599,12 @@ static int KeyPressFunction (int nKeySym) {
         case XK_equal :
             if(ngrid < 100) ++ngrid;
             key_11 = 1;
+            renderEpoch++;
             break;
         case XK_minus :
             if(ngrid > 10) --ngrid;
             key_11 = 1;
+            renderEpoch++;
             break;
         case XK_B:
         case XK_b:
@@ -738,6 +740,7 @@ static int KeyPressFunction (int nKeySym) {
                         if (found) {
                             if (compile_functions()) {
                                 printf("[DGraphX] Function %s updated successfully to: %s\n", func_name, input);
+                                renderEpoch++;
                             } else {
                                 printf("[DGraphX] Failed to compile expression. Reverting to previous state.\n");
                                 // Simple revert
@@ -791,6 +794,7 @@ static int KeyPressFunction (int nKeySym) {
             if(key_10 < 3) key_10++;
             else key_10 = 1;
             key_11 = 1;
+            renderEpoch++;
             break;
         case XK_0:
             variant = 0;

@@ -101,6 +101,8 @@ typedef struct {
     int n;
 } polygon;
 
+extern int renderEpoch;
+
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double*, int*,double,double);
 
