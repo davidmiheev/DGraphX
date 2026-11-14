@@ -124,7 +124,7 @@ int x_0 = PIXMAP_SIZE/2 - WND_WDT/2;
 int y_0 = PIXMAP_SIZE/2 - WND_HGT/2;
 
 int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
-	    int (*KeyPressFunction) (int), double* x, int* n, double a, double b) {
+	    int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double* x, int* n, double a, double b) {
   XEvent rEvent;
   XWindowAttributes rAttributes;
   KeySym nKeySym;
@@ -144,7 +144,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
 			     WND_MIN_WDT, WND_MIN_HGT, WND_TITLE, WND_ICON_TITLE, 0))
     return X11_ERR_2;
   
-  XSelectInput (prDisplay, nWnd, ExposureMask | KeyPressMask);
+  XSelectInput (prDisplay, nWnd, ExposureMask | KeyPressMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
 
   XMapWindow (prDisplay, nWnd);
     
@@ -167,54 +167,82 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
     
   //=========== XLoop ==============
   FOREVER {
-      
+      int redraw = 0, quit = 0, ev = 0;
+
       XNextEvent (prDisplay, &rEvent);
 
-      switch (rEvent.type) {
-          case Expose:
-              if (rEvent.xexpose.count != 0)
+      // Process the current event plus everything already queued,
+      // then redraw once per batch (coalesces mouse/scroll/key floods).
+      for (;;) {
+          switch (rEvent.type) {
+              case Expose:
+                  if (rEvent.xexpose.count != 0)
+                      break;
+
+                  if (XGetWindowAttributes (prDisplay, nWnd, &rAttributes)) {
+                      if (width != rAttributes.width
+                          || height != rAttributes.height
+                          || nDepth != rAttributes.depth) {
+                          width = rAttributes.width;
+                          height = rAttributes.height;
+                          nDepth = rAttributes.depth;
+                          x_0 = PIXMAP_SIZE/2 - width/2;
+                          y_0 = PIXMAP_SIZE/2 - height/2;
+                          SetSize();
+                          if (!draw) return X11_ERR_4;
+                      }
+                  } else return X11_ERR_5;
+
+                  redraw = 1;
                   break;
 
-              if (XGetWindowAttributes (prDisplay, nWnd, &rAttributes)) {
-                  if (width != rAttributes.width
-                      || height != rAttributes.height
-                      || nDepth != rAttributes.depth) {
-                      width = rAttributes.width;
-                      height = rAttributes.height;
-                      nDepth = rAttributes.depth;
-                      x_0 = PIXMAP_SIZE/2 - width/2;
-                      y_0 = PIXMAP_SIZE/2 - height/2;
-                      SetSize();
-                      if (!draw) return X11_ERR_4;
+              case KeyPress:
+                  XLookupString (&rEvent.xkey, NULL, 0, &nKeySym, NULL);
+                  switch (KeyPressFunction (nKeySym)) {
+                      case KEY_PRESS_NOTHING:
+                          break;
+                      case KEY_PRESS_EXPOSE:
+                          redraw = 1;
+                          break;
+                      default:
+                          quit = 1;
+                          break;
                   }
-              } else return X11_ERR_5;
+                  break;
 
-              DrawWindowContent (x,n,a,b);
-              XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
-              break;
-              
-          case KeyPress:
-              XLookupString (&rEvent.xkey, NULL, 0, &nKeySym, NULL);
-              switch (KeyPressFunction (nKeySym)) {
-                  case KEY_PRESS_NOTHING:
-                      break;
+              case ButtonPress:
+              case ButtonRelease:
+              case MotionNotify:
+                  if (rEvent.type == MotionNotify)
+                      while (XCheckTypedWindowEvent (prDisplay, nWnd, MotionNotify, &rEvent));
+                  if (MouseFunc) {
+                      int res = 0;
+                      if (rEvent.type == MotionNotify) {
+                          res = MouseFunc(rEvent.type, rEvent.xmotion.x, rEvent.xmotion.y, 0);
+                      } else {
+                          res = MouseFunc(rEvent.type, rEvent.xbutton.x, rEvent.xbutton.y, rEvent.xbutton.button);
+                      }
+                      if (res == KEY_PRESS_EXPOSE) redraw = 1;
+                      else if (res == KEY_PRESS_QUIT) quit = 1;
+                  }
+                  break;
+          }
+          if (quit || !XPending (prDisplay) || ++ev > 64) break;
+          XNextEvent (prDisplay, &rEvent);
+      }
 
-                  case KEY_PRESS_EXPOSE:
-                      rEvent.type = Expose;
-                      rEvent.xexpose.count = 0;
-                      XSendEvent (prDisplay, nWnd, True, 0, &rEvent);
-                      break;
+      if (quit) {
+          XFreePixmap (prDisplay, draw);
+          XUnloadFont(prDisplay, font);
+          XFreeGC (prDisplay, prGC);
+          XCloseDisplay (prDisplay);
+          return 0;
+      }
 
-                  default:
-                  case KEY_PRESS_QUIT:
-                      XFreePixmap (prDisplay, draw);
-                      XUnloadFont(prDisplay, font);
-                      XFreeGC (prDisplay, prGC);
-                      XCloseDisplay (prDisplay);
-                      return 0;
-              }
-              break;
-      } //while (XCheckMaskEvent(prDisplay, KeyPressMask | KeyReleaseMask, &rEvent));
+      if (redraw) {
+          DrawWindowContent (x,n,a,b);
+          XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+      }
     }
    //======================================
     
@@ -257,14 +285,28 @@ void WFillTriangle (int x_1, int y_1, int x_2, int y_2, int x_3, int y_3) {
 }
 
 void WFillPolygon (XPoint * points, int num) {
-    int key = 0;
-    for (int i = 0; i < num; i++) {
-        points[i].x += x_0;
-        points[i].y += y_0;
-        if(!(points[i].x > 0 && points[i].x < PIXMAP_SIZE && points[i].y > 0 && points[i].y < PIXMAP_SIZE)) key = 1;
-    }
-  if(key == 0)
+  if (num <= 0) return;
+  
+  // Check if all points are within the pixmap bounds after translation
+  for (int i = 0; i < num; i++) {
+    int tx = points[i].x + x_0;
+    int ty = points[i].y + y_0;
+    if (tx < 0 || tx >= PIXMAP_SIZE || ty < 0 || ty >= PIXMAP_SIZE) return;
+  }
+
+  // Temporarily translate points for drawing
+  for (int i = 0; i < num; i++) {
+    points[i].x += x_0;
+    points[i].y += y_0;
+  }
+
   XFillPolygon (prDisplay, draw, prGC, points, num, Convex, CoordModeOrigin);
+
+  // Restore points to their original state
+  for (int i = 0; i < num; i++) {
+    points[i].x -= x_0;
+    points[i].y -= y_0;
+  }
 }
    /* FillSolid, FillTiled, FillStippled, FillOpaeueStippled. */
 void WSetFillStyle (int Style) {

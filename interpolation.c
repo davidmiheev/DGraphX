@@ -60,7 +60,7 @@ void interpS(double* x, int n, double *m) {
 
 void solveEq(int mode, int n, Point *pt) {
     FILE *f;
-    double h = 1./(n-1), a, b, c = 5,//exp(h)/5. - exp(sqrt(6)*h)/20. - 3*exp(-sqrt(6)*h)/20.,-(exp(h)/5. - exp(sqrt(6)*h)/20. - 3*exp(-sqrt(6)*h)/20.)
+    double a, b, c = 5,//exp(h)/5. - exp(sqrt(6)*h)/20. - 3*exp(-sqrt(6)*h)/20.,-(exp(h)/5. - exp(sqrt(6)*h)/20. - 3*exp(-sqrt(6)*h)/20.)
     d = -1, x;
     f = fopen("res.txt","w");
     x = shoot(mode, c, n, pt);
@@ -85,11 +85,11 @@ void solveEq(int mode, int n, Point *pt) {
     } printf("%f\n", x);
     //for(int i = 0; i < n - 1; i++) fprintf(f,"(%f,%f)--", pt[i].x, pt[i].y);
     //fprintf(f,"(%f,%f)", pt[n-1].x, pt[n-1].y);
-    fclose(f);
+    if(f) fclose(f);
 }
 
 double shoot(int mode, double par, int n, Point *pt) {
-    double h = 1./(n-1), tmp[3], res = 0, a;
+    double h = 1./(n-1), tmp[3] = {0.}, res = 0, a;
     tmp[0] = 0; tmp[1] = par;
     for (int i = 0; i < n - 2; i++) {
         res += h*(tmp[0]*(sin(i*h) + tmp[0]*tmp[0])/2. + tmp[1]*(sin((i+1)*h) + tmp[1]*tmp[1])/2.);
@@ -150,7 +150,7 @@ void permutation(int *a) {
     for (int i = 0; i < 5; i++) a[i] = tmp[permut[i]-1];
 }
 
-void RichardsonIter(double *a, int n, double min, double max, int *niter ) {
+void RichardsonIter(double *a, int n, double min, double max, int *niter, int max_iter) {
     double h = 1./(n-1); int k = 0, d[5] = {1, 9, 3, 7, 5};//{3, 4, 5, 1, 2};;
     double* b = (double*) malloc((n-2)*(n-2)*sizeof(double));
     double c[5];
@@ -164,7 +164,7 @@ void RichardsonIter(double *a, int n, double min, double max, int *niter ) {
             k++;
         }
     } k = 0;
-    while(err(a,b, 1e-10, n) && k < 1000) {
+    while(err(a,b, 1e-10, n) && k < max_iter) {
         for(int l = 0; l < 5; l++) {
             for(int i = 1; i < n - 1; i++) {
                 for(int j = 1; j < n - 1; j++) {
@@ -179,7 +179,7 @@ void RichardsonIter(double *a, int n, double min, double max, int *niter ) {
     free(b);
 }
 
-void SeidelGauss(double *a, int n, int *niter) {
+void SeidelGauss(double *a, int n, int *niter, int max_iter) {
     double h = 1./(n-1); int k = 0;
     double* b = (double*) malloc((n-2)*(n-2)*sizeof(double));
     double* d = (double*) malloc((n-2)*(n-2)*sizeof(double));
@@ -189,7 +189,7 @@ void SeidelGauss(double *a, int n, int *niter) {
             k++;
         }
     } k = 0;
-    while(err(a,b,1e-10,n) && k < 10000) { k++;
+    while(err(a,b,1e-10,n) && k < max_iter) { k++;
         for(int i = 1; i < n - 1; i++) {
             for(int j = 1; j < n - 1; j++) {
                 d[(i-1)*(n-2)+j-1] = diff(a,b,i,j,n);

@@ -16,7 +16,7 @@ LIB_DIR         = -L. -L/opt/X11/lib
 LIB             = -lX11 
 LDFLAGS         = $(DEBUG)
 
-OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o matrix.o
+OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o matrix.o tinyexpr.o
 
 all:    $(NAME)
 
@@ -32,7 +32,7 @@ clean:
 #-------------------------------------------------------------------------------
 Xfun.o      : Xfun.c DGraphX.h Interp2D.h
 
-DGraphX.o        : DGraphX.c DGraphX.h Interp2D.h matrix.h
+DGraphX.o        : DGraphX.c DGraphX.h Interp2D.h matrix.h tinyexpr.h
 
 interpolation.o		: interpolation.c Interp2D.h DGraphX.h 
 
@@ -41,5 +41,7 @@ dtoa.o		: dtoa.c Interp2D.h DGraphX.h
 DX.o		: DX.c DGraphX.h matrix.h 
 
 matrix.o	: matrix.c DGraphX.h matrix.h
+
+tinyexpr.o  : tinyexpr.c tinyexpr.h
 
 #-------------------------------------------------------------------------------

@@ -68,6 +68,7 @@ extern int x_0, y_0;
 #define KEY_PRESS_EXPOSE	1	
 #define KEY_PRESS_QUIT		( -1 )
 
+typedef int (*MouseEventFunc) (int type, int x, int y, int button);
 
 typedef struct {
     double x;
@@ -101,7 +102,7 @@ typedef struct {
 } polygon;
 
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
-		int (*KeyPressFunction) (int), double*, int*,double,double);
+		int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double*, int*,double,double);
 
 
 void WDrawString (const char *string, int x, int y);
@@ -127,7 +128,7 @@ void DrawGraph2D(double f(double), double a, double b);
 
 void DrawParametric2D(double (*parf[]) (double), double it, double ft);
 
-void DrawLinear3D(double* a, int n, unsigned long Color);
+void DrawLinear3D(double* a, int n, unsigned long Color, int mode);
 
 void DrawGraph3DX(double a, double b, double (*z[]) (double, double), unsigned long, unsigned long,
                   int, int, int);
@@ -167,6 +168,9 @@ void InitialPosition ();
 void RotateX(int mode);
 void RotateY(int mode);
 void RotateZ(int mode);
+void RotateX_Angle(double angle);
+void RotateY_Angle(double angle);
+void RotateZ_Angle(double angle);
 void IdMatrix();
 
 void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size);
