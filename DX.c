@@ -50,7 +50,6 @@ static double view[3];
 
 static double light[3];
 
-static double normal[3];
 
 //static double m_normal[1000][3];
 
@@ -77,7 +76,6 @@ static int key_1 = 0;
 static Pair z[BUF_SIZE];
 
 static vertex zm[BUF_SIZE];
-static polygon zb[BUF_SIZE];
 
 void SetSize() {
     double xcent = (xmax+xmin)/2., ycent = (ymax+ymin)/2.;
@@ -436,15 +434,17 @@ static int shadeIdx(double t, int n) {
     return i;
 }
 
-// Phong-ish: interpolated normal -> normalize -> diffuse+specular palette lookup.
+// Phong: interpolated normal + view dir -> normalize -> diffuse+specular lookup.
+// attr layout: [nx,ny,nz, tox,toy,toz] (to-camera vector per vertex).
 static unsigned long shadePhong(const float *a, void *ctx_) {
-    ShadeCtx *c = ctx_;
-    double n[3] = {a[0], a[1], a[2]}, r[3];
+    (void)ctx_;
+    double n[3] = {a[0], a[1], a[2]}, v[3] = {a[3], a[4], a[5]}, r[3];
     normalize(n, 3);
-    if (inner(n, c->res, 3) < 0) intxvec(-1., n, n);
+    normalize(v, 3);
+    if (inner(n, v, 3) < 0) intxvec(-1., n, n);
     reflect(light, n, r);
     return cx(shadeIdx(inner(n, light, 3), N_COLOR),
-              shadeIdx(inner(r, c->res, 3), BW_COLOR));
+              shadeIdx(inner(r, v, 3), BW_COLOR));
 }
 
 // Interpolated height -> color-ramp lookup.
@@ -467,7 +467,7 @@ static unsigned long flatShade(double tri[][3], ShadeCtx *sc) {
 
 // Near-plane clip (at the screen plane) + project + rasterize.
 // attr: per-vertex float attributes lerped through the clip; NULL = flat color.
-#define FB_NA 4
+#define FB_NA 8
 static void rasterTriA(double v[][3], float attr[][FB_NA], int na,
                        unsigned long (*shade)(const float *, void *), void *ctx,
                        unsigned long flatcol) {
@@ -513,11 +513,8 @@ static void rasterTriA(double v[][3], float attr[][FB_NA], int na,
     }
 }
 
-static void rasterTri(double v[][3], unsigned long col) {
-    rasterTriA(v, NULL, 0, NULL, NULL, col);
-}
-
 static float axq[BUF_SIZE][2];
+static unsigned long axcol[BUF_SIZE];
 static Point axlbl[3];
 static int axlbl_n = 0;
 
@@ -525,7 +522,7 @@ static void drawAxisSegs(int ax) {
     for (int i = 0; i < ax; i++) {
         if (axq[i][0] < 0 || axq[i][1] < 0) continue;
         FB_Seg(mapX(zm[i].x), mapY(zm[i].y), axq[i][0],
-               mapX(zm[i].z), mapY(zm[i].t), axq[i][1], LIGHTGREEN);
+               mapX(zm[i].z), mapY(zm[i].t), axq[i][1], axcol[i]);
     }
 }
 
@@ -562,6 +559,7 @@ void DrawAxes(int *n) {
     z[*n].z = inner(view, tmpx, 3); z[*n].num = *n; \
     zm[*n].x = p1.x; zm[*n].y = p1.y; \
     zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -1; \
+    axcol[*n] = LIGHTGREEN; \
     axq[*n][0] = wq0_ > nearW() ? 1./wq0_ : -1.f; \
     axq[*n][1] = wq1_ > nearW() ? 1./wq1_ : -1.f; \
     (*n)++; } while(0)
@@ -594,6 +592,114 @@ void DrawAxes(int *n) {
     Projection(&axlbl[1], 0, 5.3, 0);
     Projection(&axlbl[2], 0, 0, 5.3);
     axlbl_n = 3;
+}
+
+#define GRID_NDIV 10
+
+// Append one 3D segment to the depth-tested axis/grid segment list.
+static void emitSeg3(int *n, double x0, double y0, double z0,
+                     double x1, double y1, double z1, unsigned long col) {
+    if (*n >= BUF_SIZE - 1) return;
+    Point p1, p2;
+    double wq0_ = ProjectW(x0, y0, z0, &p1), wq1_ = ProjectW(x1, y1, z1, &p2);
+    zm[*n].x = p1.x; zm[*n].y = p1.y;
+    zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -2;
+    axcol[*n] = col;
+    axq[*n][0] = wq0_ > nearW() ? 1./wq0_ : -1.f;
+    axq[*n][1] = wq1_ > nearW() ? 1./wq1_ : -1.f;
+    (*n)++;
+}
+
+// Coordinate level curves on the horizontal plane z = zlev, appended
+// to the axis-segment list so they depth-test against the surface.
+void DrawFloorGrid(int *n, double x0, double x1, double y0, double y1, double zlev) {
+    Point p1, p2;
+    const int ndiv = GRID_NDIV;
+#define GRSEG(X1, Y1, X2, Y2) do { \
+    double wq0_ = ProjectW(X1, Y1, zlev, &p1), wq1_ = ProjectW(X2, Y2, zlev, &p2); \
+    zm[*n].x = p1.x; zm[*n].y = p1.y; \
+    zm[*n].z = p2.x; zm[*n].t = p2.y; zm[*n].data = -2; \
+    axcol[*n] = DARKGRAY; \
+    axq[*n][0] = wq0_ > nearW() ? 1./wq0_ : -1.f; \
+    axq[*n][1] = wq1_ > nearW() ? 1./wq1_ : -1.f; \
+    (*n)++; } while(0)
+    for (int i = 0; i <= ndiv; i++) {
+        double gx = x0 + (x1 - x0)*i/ndiv;
+        GRSEG(gx, y0, gx, y1);
+        double gy = y0 + (y1 - y0)*i/ndiv;
+        GRSEG(x0, gy, x1, gy);
+    }
+#undef GRSEG
+}
+
+// Marching-squares level curves of v[iy*nxv + ix] = f(x,y) drawn on the
+// floor plane z = zlev. Levels are linear between vmin and vmax; each is
+// colored through the active palette so it matches the surface's ramp.
+void DrawFloorContours(int *n, double *v, int nxv, int nyc, double dx, double dy,
+                       double a, int nlev, double vmin, double vmax, double zlev) {
+    for (int l = 1; l <= nlev; l++) {
+        double lev = vmin + (vmax - vmin)*l/(nlev + 1);
+        unsigned long col = cx(shadeIdx(2.*l/(nlev + 1) - 1., N_COLOR), 0);
+        for (int iy = 0; iy < nyc; iy++) {
+            for (int ix = 0; ix + 1 < nxv; ix++) {
+                double hx[4] = {a + ix*dx, a + (ix+1)*dx, a + (ix+1)*dx, a + ix*dx};
+                double hy[4] = {a + iy*dy, a + iy*dy, a + (iy+1)*dy, a + (iy+1)*dy};
+                double hv[4] = {v[iy*nxv + ix], v[iy*nxv + ix + 1],
+                                v[(iy+1)*nxv + ix + 1], v[(iy+1)*nxv + ix]};
+                double px[4], py[4]; int np = 0;
+                for (int e = 0; e < 4 && np < 4; e++) {
+                    int e2 = (e + 1)%4;
+                    if ((hv[e] - lev)*(hv[e2] - lev) < 0) {
+                        double t = (lev - hv[e])/(hv[e2] - hv[e]);
+                        px[np] = hx[e] + (hx[e2] - hx[e])*t;
+                        py[np] = hy[e] + (hy[e2] - hy[e])*t;
+                        np++;
+                    }
+                }
+                for (int q = 0; q + 1 < np; q += 2)
+                    emitSeg3(n, px[q], py[q], zlev, px[q+1], py[q+1], zlev, col);
+            }
+        }
+    }
+}
+
+// Iso-parametric curves on the surface: for each floor-grid division
+// x_t (resp. y_t) draws the polyline (x_t, y, v(x_t,y)) (resp.
+// (x, y_t, v(x,y_t))) using bilinear-interpolated grid values.
+// Each curve is emitted twice, offset +-eps along z, so the copy on the
+// viewer-facing side wins the depth test and the lines never z-fight
+// with the surface triangles sharing the same vertices.
+void DrawSurfaceCurves(int *n, double *v, int nxv, int nyc,
+                       double dx, double dy, double a, double b, double eps) {
+    for (int g = 0; g <= GRID_NDIV; g++) {
+        double xt = a + (b - a)*g/GRID_NDIV;
+        double fx = (xt - a)/dx;
+        int ix = (int)fx;
+        if (ix < 0) ix = 0;
+        if (ix > nxv - 2) ix = nxv - 2;
+        double t = fx - ix;
+        double y0 = a, z0 = v[ix]*(1 - t) + v[ix + 1]*t;
+        for (int iy = 1; iy < nyc; iy++) {
+            double y1 = a + iy*dy;
+            double z1 = v[iy*nxv + ix]*(1 - t) + v[iy*nxv + ix + 1]*t;
+            emitSeg3(n, xt, y0, z0 + eps, xt, y1, z1 + eps, BLACK);
+            emitSeg3(n, xt, y0, z0 - eps, xt, y1, z1 - eps, BLACK);
+            y0 = y1; z0 = z1;
+        }
+        double fy = (xt - a)/dy;
+        int iy = (int)fy;
+        if (iy < 0) iy = 0;
+        if (iy > nyc - 1) iy = nyc - 1;
+        double s_ = fy - iy;
+        double x0 = a, w0 = v[iy*nxv]*(1 - s_) + v[(iy + 1)*nxv]*s_;
+        for (int jx = 1; jx < nxv; jx++) {
+            double x1 = a + jx*dx;
+            double w1 = v[iy*nxv + jx]*(1 - s_) + v[(iy + 1)*nxv + jx]*s_;
+            emitSeg3(n, x0, xt, w0 + eps, x1, xt, w1 + eps, BLACK);
+            emitSeg3(n, x0, xt, w0 - eps, x1, xt, w1 - eps, BLACK);
+            x0 = x1; w0 = w1;
+        }
+    }
 }
 
 void VectorSight() {
@@ -656,12 +762,6 @@ int ufun(double a, double b, double t) {
     else return (t > a);
 }
 
-void normalMap(polygon *m, int n) {
-    for(int i = 0; i < n; i++) {
-        normalize(m[i].normal, 3);
-    }
-}
-
 /*int Inside(polygon p, Point a) {
     int j = 0;
     for(int i = 0; i < p.n; i++) {
@@ -699,6 +799,7 @@ void DrawLinear3D(double* a, int n, unsigned long Color, int mode) {
     if(key == 0)  InitCameraPosition(10, 20);
     int ax = 0;
     if(mode) DrawAxes(&ax);
+    if(gridEnabled) DrawFloorGrid(&ax, -5, 5, -5, 5, ZS(zmin) - 0.5);
     int st = interactive ? 2 : 1;
     if (FB_Begin(BLACK)) {
         ShadeCtx sc;
@@ -718,17 +819,21 @@ void DrawLinear3D(double* a, int n, unsigned long Color, int mode) {
                     else if (ii < n - 1) dfy = (a[(ii + 1)*n + jj] - a[ii*n + jj])/h;
                     else dfy = (a[ii*n + jj] - a[(ii - 1)*n + jj])/h;
                     attr[vi][0] = -zscale*dfx; attr[vi][1] = -zscale*dfy; attr[vi][2] = 1.;
+                    attr[vi][3] = cameraPos*view[0] - (jj*h - 5) + centre[0];
+                    attr[vi][4] = cameraPos*view[1] - (ii*h - 5) + centre[1];
+                    attr[vi][5] = cameraPos*view[2] - ZS(a[ii*n + jj]) + centre[2];
                 }
                 Init(tri[0], j*h - 5, i*h - 5, ZS(a[i*n + j]));
                 Init(tri[1], (j+sx)*h - 5, i*h - 5, ZS(a[i*n + j + sx]));
                 Init(tri[2], (j+sx)*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j + sx]));
                 Init(sc.res, cameraPos*view[0] - tri[0][0] + centre[0], cameraPos*view[1] - tri[0][1] + centre[1], cameraPos*view[2] - tri[0][2] + centre[2]);
                 normalize(sc.res, 3);
-                float at0[3][FB_NA] = {{attr[0][0], attr[0][1], attr[0][2], 0}, {attr[1][0], attr[1][1], attr[1][2], 0}, {attr[3][0], attr[3][1], attr[3][2], 0}};
-                rasterTriA(tri, at0, phongEnabled ? 3 : 0, shadePhong, &sc, flatShade(tri, &sc));
+                float at0[3][FB_NA], at1[3][FB_NA];
+                memcpy(at0[0], attr[0], sizeof(at0[0])); memcpy(at0[1], attr[1], sizeof(at0[1])); memcpy(at0[2], attr[3], sizeof(at0[2]));
+                memcpy(at1[0], attr[0], sizeof(at1[0])); memcpy(at1[1], attr[2], sizeof(at1[1])); memcpy(at1[2], attr[3], sizeof(at1[2]));
+                rasterTriA(tri, at0, phongEnabled ? 6 : 0, shadePhong, &sc, flatShade(tri, &sc));
                 Init(tri[1], j*h - 5, (i+sy)*h - 5, ZS(a[(i+sy)*n + j]));
-                float at1[3][FB_NA] = {{attr[0][0], attr[0][1], attr[0][2], 0}, {attr[2][0], attr[2][1], attr[2][2], 0}, {attr[3][0], attr[3][1], attr[3][2], 0}};
-                rasterTriA(tri, at1, phongEnabled ? 3 : 0, shadePhong, &sc, flatShade(tri, &sc));
+                rasterTriA(tri, at1, phongEnabled ? 6 : 0, shadePhong, &sc, flatShade(tri, &sc));
             }
         }
         drawAxisSegs(ax);
@@ -745,7 +850,7 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     static double *gv = NULL, *gm = NULL;
     static size_t gcap = 0;
     static int ge = -1, gn = -1, gnxc = -1;
-    static double ga = 1e30, gb = 1e30;
+    static double ga = 1e30, gb = 1e30, gzmin = 0., gzmax = 0.;
     int nxc = (int)((b - a)/dx + 0.5), nyc = (int)((b - a)/dy + 0.5), nxv = nxc + 1, nf = n*nxv*(nyc + 1);
     int st = interactive ? 2 : 1;
     if(ge != renderEpoch || gn != n || gnxc != nxc || ga != a || gb != b) {
@@ -765,6 +870,11 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                     for (int ix = 0; ix < nxc; ix++)
                         gm[i*nxv*(nyc + 1) + iy*nxv + ix] = f[i](a + (ix + .5)*dx, a + (iy + .5)*dy);
         }
+        gzmin = gzmax = gv ? gv[0] : 0;
+        for (int i = 1; i < nf; i++) {
+            if (gv[i] < gzmin) gzmin = gv[i];
+            if (gv[i] > gzmax) gzmax = gv[i];
+        }
         ge = renderEpoch; gn = n; gnxc = nxc; ga = a; gb = b;
     }
     pallette(firstColor, secondColor, modeColor, N_COLOR);
@@ -772,6 +882,8 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
     farY = a; nearY = b;
     if(key == 0)  InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j); //printf("%d:(\n", j);
+    double fl = gzmin - (b - a)/20.;
+    if(gridEnabled) DrawFloorGrid(&j, a, b, a, b, fl);
     if(gv && gm && FB_Begin(BLACK)) {
         ShadeCtx sc;
         double tri[3][3];
@@ -790,7 +902,7 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                         attr[0][0] = gv_[v]; attr[1][0] = gv_[v + sx];
                         attr[2][0] = gv_[v + sy*nxv]; attr[3][0] = gv_[v + sx + sy*nxv];
                     } else {
-                        na = 3;
+                        na = 6;
                         for (int vi = 0; vi < 4; vi++) {
                             int iiy = vi >= 2 ? iy + sy : iy, iix = (vi == 1 || vi == 3) ? ix + sx : ix;
                             int vv = iiy*nxv + iix;
@@ -802,6 +914,9 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                             else if (iiy < nyc) dfy = (gv_[vv + nxv] - gv_[vv])/dy;
                             else dfy = (gv_[vv] - gv_[vv - nxv])/dy;
                             attr[vi][0] = -dfx; attr[vi][1] = -dfy; attr[vi][2] = 1.;
+                            attr[vi][3] = cameraPos*view[0] - (a + iix*dx) + centre[0];
+                            attr[vi][4] = cameraPos*view[1] - (a + iiy*dy) + centre[1];
+                            attr[vi][5] = cameraPos*view[2] - gv_[vv] + centre[2];
                         }
                     }
                     Init(tri[0], x, y, gv_[v]);
@@ -817,6 +932,19 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                     rasterTriA(tri, at, phongEnabled ? na : 0, modeColor == 0 ? shadeHeight : shadePhong, &sc,
                                modeColor == 0 ? cx((int)((0.5 + atan(COEF * gm_[v])/PI)*N_COLOR),0) : flatShade(tri, &sc));
                 }
+            }
+        }
+        if(gridEnabled) {
+            for (int i = 0; i < n; i++) {
+                double *gv_ = &gv[i*nf/n];
+                double fmin = gv_[0], fmax = gv_[0];
+                for (int q = 1; q < nf/n; q++) {
+                    if (gv_[q] < fmin) fmin = gv_[q];
+                    if (gv_[q] > fmax) fmax = gv_[q];
+                }
+                DrawFloorContours(&j, gv_, nxv, nyc, dx, dy, a, 8, fmin, fmax, fl);
+                DrawSurfaceCurves(&j, gv_, nxv, nyc, dx, dy, a, b,
+                                  (fmax - fmin)*0.003 + 1e-5);
             }
         }
         drawAxisSegs(j);
@@ -855,27 +983,24 @@ static void transportFrame(double a[3], double b[3], double v[3]) {
     InitV(v, res);
 }
 
-static void tubeTri(int k, double v0[3], double v1[3], double v2[3]) {
-    double vec[3], e1[3], e2[3];
-    Init(zb[k].vert[0], v0[0], v0[1], v0[2]);
-    Init(zb[k].vert[1], v1[0], v1[1], v1[2]);
-    Init(zb[k].vert[2], v2[0], v2[1], v2[2]);
-    plus(v0, v1, vec); plus(vec, v2, vec); intxvec(1./3., vec, vec);
-    minus(vec, centre, vec);
-    zb[k].z = inner(view, vec, 3);
-    minus(v1, v0, e1); minus(v2, v0, e2);
-    cross(e1, e2, zb[k].normal);
+static void tubeVertAttr(float *at, double *v, double *ctr) {
+    at[0] = v[0] - ctr[0]; at[1] = v[1] - ctr[1]; at[2] = v[2] - ctr[2];
+    at[3] = cameraPos*view[0] - v[0] + centre[0];
+    at[4] = cameraPos*view[1] - v[1] + centre[1];
+    at[5] = cameraPos*view[2] - v[2] + centre[2];
 }
 
 void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int mode) {
     const int NT = 400;
     static double rings[401][TUBE_NR][3];
+    static double ringsC[401][3];
     static double gc[3] = {0., 0., 0.};
+    static double svs = 0.;
+    static double tx0, tx1, ty0, ty1, tz0;
     static int tre = -1;
     static double r = 0.05;
     double dt = (s - it)/NT, ftol = dt*0.5;
-    double vec[3], res[3];
-    int k = 0, ax = 0;
+    int ax = 0;
     SetShadingColor(BLUE);
     SetCentre(0, 0, 0);
     pallette(BLUE, BLACK, 1, N_COLOR);
@@ -897,6 +1022,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
         cross(Tp, n1, n2);
         normalize(n2, 3);
         tubeRingAt(P, n1, n2, r, rings[0]);
+        InitV(ringsC[0], P);
         for (int i = 1; i <= NT; i++) {
             tubeTangent(curvefun, it + i*dt, ftol, P, T);
             transportFrame(Tp, T, n1);
@@ -904,54 +1030,66 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             cross(T, n1, n2);
             normalize(n2, 3);
             tubeRingAt(P, n1, n2, r, rings[i]);
+            InitV(ringsC[i], P);
             InitV(Tp, T);
         }
         Init(gc, 0., 0., 0.);
+        tx0 = tx1 = rings[0][0][0]; ty0 = ty1 = rings[0][0][1]; tz0 = rings[0][0][2];
         for (int i = 0; i <= NT; i++)
-            for (int j = 0; j < TUBE_NR; j++)
+            for (int j = 0; j < TUBE_NR; j++) {
                 plus(gc, rings[i][j], gc);
+                if (rings[i][j][0] < tx0) tx0 = rings[i][j][0];
+                if (rings[i][j][0] > tx1) tx1 = rings[i][j][0];
+                if (rings[i][j][1] < ty0) ty0 = rings[i][j][1];
+                if (rings[i][j][1] > ty1) ty1 = rings[i][j][1];
+                if (rings[i][j][2] < tz0) tz0 = rings[i][j][2];
+            }
         intxvec(1./((NT + 1)*TUBE_NR), gc, gc);
+        // Signed volume detects winding once per geometry change:
+        // >0 = tris wound with outward normals, <0 = inward.
+        double cr[3], a0[3], a1[3], a2[3];
+        svs = 0;
+        for (int i = 1; i <= NT; i++)
+            for (int j = 0; j < TUBE_NR; j++) {
+                int jn = (j + 1) % TUBE_NR;
+                double *A = rings[i-1][j], *D = rings[i-1][jn], *B = rings[i][j], *C = rings[i][jn];
+                minus(A, gc, a0); minus(D, gc, a1); minus(B, gc, a2);
+                cross(a1, a2, cr); svs += inner(a0, cr, 3);
+                minus(B, gc, a0); minus(D, gc, a1); minus(C, gc, a2);
+                cross(a1, a2, cr); svs += inner(a0, cr, 3);
+            }
         tre = renderEpoch;
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&ax);
+    if(gridEnabled) DrawFloorGrid(&ax, tx0, tx1, ty0, ty1, tz0 - 2*r);
     int st = interactive ? 2 : 1;
-    for (int i = st; i <= NT; i += st) {
-        for (int j = 0; j < TUBE_NR; j++) {
-            int jn = (j + 1) % TUBE_NR;
-            tubeTri(k, rings[i-st][j], rings[i-st][jn], rings[i][j]);
-            tubeTri(k + 1, rings[i][j], rings[i-st][jn], rings[i][jn]);
-            k += 2;
-        }
-    }
-    normalMap(zb, k);
-    // Signed volume detects winding: >0 = outward normals, <0 = inward.
-    double sv = 0, cr[3], a0[3], a1[3], a2[3];
-    for (int i = 0; i < k; i++) {
-        minus(zb[i].vert[0], gc, a0);
-        minus(zb[i].vert[1], gc, a1);
-        minus(zb[i].vert[2], gc, a2);
-        cross(a1, a2, cr);
-        sv += inner(a0, cr, 3);
-    }
-    int k2 = 0;
-    for (int i = 0; i < k; i++) {
-        Init(res, cameraPos*view[0] - zb[i].vert[0][0] + centre[0],
-                  cameraPos*view[1] - zb[i].vert[0][1] + centre[1],
-                  cameraPos*view[2] - zb[i].vert[0][2] + centre[2]);
-        normalize(res, 3);
-        double d = inner(res, zb[i].normal, 3);
-        if((sv > 0) == (d < 0)) continue; // backface
-        zb[k2] = zb[i]; k2++;
-    }
     if (FB_Begin(BLACK)) {
-        for (int i = 0; i < k2; i++) {
-            polygon *pl = &zb[i];
-            Init(res, (cameraPos*view[0] -  pl->vert[0][0] +centre[0]), (cameraPos*view[1] - pl->vert[0][1] + centre[1]), (cameraPos*view[2] - pl->vert[0][2])+centre[2]);
-            normalize(res,3);
-            if(inner(res, pl->normal, 3) < -1e-10) Init(pl->normal, (-1)*pl->normal[0], (-1)*pl->normal[1], (-1)*pl->normal[2]);
-            reflect(light, pl->normal, vec);
-            rasterTri(pl->vert, cx((int)((inner(pl->normal, light, 3)/2. + 1./2.)*N_COLOR),(int)((inner(vec, res, 3)/2. + 1./2.)*BW_COLOR)));
+        ShadeCtx sc;
+        double tri[3][3], e1[3], e2[3], fn[3];
+        float at[3][FB_NA];
+        for (int i = st; i <= NT; i += st) {
+            for (int j = 0; j < TUBE_NR; j++) {
+                int jn = (j + 1) % TUBE_NR;
+                double *A = rings[i-st][j], *D = rings[i-st][jn], *B = rings[i][j], *C = rings[i][jn];
+                for (int t = 0; t < 2; t++) {
+                    double *v0 = t ? B : A, *v1 = D, *v2 = t ? C : B;
+                    int r0 = t ? i : i-st, r2 = i;
+                    Init(tri[0], v0[0], v0[1], v0[2]);
+                    Init(tri[1], v1[0], v1[1], v1[2]);
+                    Init(tri[2], v2[0], v2[1], v2[2]);
+                    minus(tri[1], tri[0], e1); minus(tri[2], tri[0], e2); cross(e1, e2, fn);
+                    Init(sc.res, cameraPos*view[0] - tri[0][0] + centre[0],
+                                 cameraPos*view[1] - tri[0][1] + centre[1],
+                                 cameraPos*view[2] - tri[0][2] + centre[2]);
+                    normalize(sc.res, 3);
+                    if((svs > 0) == (inner(sc.res, fn, 3) < 0)) continue; // backface
+                    tubeVertAttr(at[0], v0, ringsC[r0]);
+                    tubeVertAttr(at[1], v1, ringsC[i-st]);
+                    tubeVertAttr(at[2], v2, ringsC[r2]);
+                    rasterTriA(tri, at, phongEnabled ? 6 : 0, shadePhong, &sc, flatShade(tri, &sc));
+                }
+            }
         }
         drawAxisSegs(ax);
         FB_Flush();
@@ -963,6 +1101,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 #define PGS 100
 static double pgv[(PGT + 1)*(PGS + 1)*3];
 static int pge = -1;
+static double pgx0, pgx1, pgy0, pgy1, pgz0;
 
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
@@ -987,10 +1126,19 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
                 idx += 3;
             }
         }
+        pgx0 = pgx1 = pgv[0]; pgy0 = pgy1 = pgv[1]; pgz0 = pgv[2];
+        for (int i = 3; i < idx; i += 3) {
+            if (pgv[i] < pgx0) pgx0 = pgv[i];
+            if (pgv[i] > pgx1) pgx1 = pgv[i];
+            if (pgv[i+1] < pgy0) pgy0 = pgv[i+1];
+            if (pgv[i+1] > pgy1) pgy1 = pgv[i+1];
+            if (pgv[i+2] < pgz0) pgz0 = pgv[i+2];
+        }
         pge = renderEpoch;
     }
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j);
+    if(gridEnabled) DrawFloorGrid(&j, pgx0, pgx1, pgy0, pgy1, pgz0 - 0.4);
     int st = interactive ? 2 : 1;
     if (FB_Begin(BLACK)) {
         ShadeCtx sc;
@@ -1008,7 +1156,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
                     attr[0][0] = pgv[3*v + 2]; attr[1][0] = pgv[3*(v + sx*(PGS + 1)) + 2];
                     attr[2][0] = pgv[3*(v + sy) + 2]; attr[3][0] = pgv[3*(v + sx*(PGS + 1) + sy) + 2];
                 } else {
-                    na = 3;
+                    na = 6;
                     for (int vi = 0; vi < 4; vi++) {
                         int ti = vi == 1 || vi == 3 ? i + sx : i, sj = vi >= 2 ? jj + sy : jj;
                         int tp = ti > 0 ? ti - 1 : ti, tn = ti < PGT ? ti + 1 : ti;
@@ -1019,6 +1167,10 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
                         Init(w, pc[0] - pd[0], pc[1] - pd[1], pc[2] - pd[2]);
                         cross(u, w, tmpx);
                         attr[vi][0] = tmpx[0]; attr[vi][1] = tmpx[1]; attr[vi][2] = tmpx[2];
+                        double *pv_ = &pgv[3*(ti*(PGS + 1) + sj)];
+                        attr[vi][3] = cameraPos*view[0] - pv_[0] + centre[0];
+                        attr[vi][4] = cameraPos*view[1] - pv_[1] + centre[1];
+                        attr[vi][5] = cameraPos*view[2] - pv_[2] + centre[2];
                     }
                 }
                 double *p10 = &pgv[3*(v + sx*(PGS + 1))], *p01 = &pgv[3*(v + sy)], *p11 = &pgv[3*(v + sx*(PGS + 1) + sy)];
@@ -1043,42 +1195,90 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
 }
 
 void DrawPolytope(Face *f, int n) {
-    double a = 0, b = 0, c = 0, u[3], w[3];
+    double u[3];
+    static int pvU = 0, pve = -1;
+    static double pvL[1000][3], pvn[1000][3], pfn[100][3];
+    static int pvid[100][10];
+    static double pvx0, pvx1, pvy0, pvy1, pvz0;
     VectorSight();
     SetShadingColor(BLUE);
     pallette(RED, BLUE, 1, N_COLOR);
     if(key == 0) InitCameraPosition(5, 2);
-    if (!FB_Begin(BLACK)) return;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < f[i].n; j++) {
-            a += f[i].vertex[0][j]/(f[i].n);
-            b += f[i].vertex[1][j]/(f[i].n);
-            c += f[i].vertex[2][j]/(f[i].n);
+    int ax = 0;
+    if (pve != renderEpoch) {
+        // Deduplicate face vertices (shared corners appear in several faces).
+        pvU = 0;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < f[i].n; j++) {
+                double x = f[i].vertex[0][j], y = f[i].vertex[1][j], z = f[i].vertex[2][j];
+                int m = 0;
+                while (m < pvU && (pvL[m][0] != x || pvL[m][1] != y || pvL[m][2] != z)) m++;
+                if (m == pvU) { Init(pvL[pvU], x, y, z); pvU++; }
+                pvid[i][j] = m;
+            }
+        // Smoothed vertex normal = sum of outward normals of adjacent faces.
+        double pc[3] = {0., 0., 0.};
+        for (int m = 0; m < pvU; m++) {
+            plus(pc, pvL[m], pc);
+            Init(pvn[m], 0., 0., 0.);
         }
-        Init(u, f[i].vertex[0][1] - f[i].vertex[0][0],
-            f[i].vertex[1][1]-f[i].vertex[1][0],
-                 f[i].vertex[2][1]-f[i].vertex[2][0]);
-        Init(w, f[i].vertex[0][f[i].n-1] - f[i].vertex[0][0],
-            f[i].vertex[1][f[i].n-1]-f[i].vertex[1][0],
-                 f[i].vertex[2][f[i].n-1]-f[i].vertex[2][0]);
-        cross(u, w, normal);
-        Init(u, cameraPos*view[0] - a, cameraPos*view[1] - b, cameraPos*view[2] - c);
-        if(inner(normal, u, 3) < 0)
-            Init(normal, (-1)*normal[0], (-1)*normal[1], (-1)*normal[2]);
-        normalize(normal, 3);
-        Init(u, (cameraPos*view[0] -  f[i].vertex[0][0] +centre[0]), (cameraPos*view[1] - f[i].vertex[0][1] + centre[1]), (cameraPos*view[2] - f[i].vertex[0][2])+centre[2]);
-        normalize(u,3);
-        reflect(light, normal, w);
-        unsigned long col = cx((int)((inner(normal, light, 3)/2. + 1./2.)*N_COLOR), (int)((inner(w, u, 3)/2. + 1./2.)*BW_COLOR));
-        for (int j = 1; j + 1 < f[i].n; j++) {
-            double tri[3][3];
-            Init(tri[0], f[i].vertex[0][0], f[i].vertex[1][0], f[i].vertex[2][0]);
-            Init(tri[1], f[i].vertex[0][j], f[i].vertex[1][j], f[i].vertex[2][j]);
-            Init(tri[2], f[i].vertex[0][j+1], f[i].vertex[1][j+1], f[i].vertex[2][j+1]);
-            rasterTri(tri, col);
+        intxvec(1./pvU, pc, pc);
+        for (int i = 0; i < n; i++) {
+            double fc[3] = {0., 0., 0.}, fn[3], e1[3], e2[3];
+            for (int j = 0; j < f[i].n; j++) {
+                fc[0] += f[i].vertex[0][j]/f[i].n;
+                fc[1] += f[i].vertex[1][j]/f[i].n;
+                fc[2] += f[i].vertex[2][j]/f[i].n;
+            }
+            Init(e1, f[i].vertex[0][1] - f[i].vertex[0][0],
+                     f[i].vertex[1][1] - f[i].vertex[1][0],
+                     f[i].vertex[2][1] - f[i].vertex[2][0]);
+            Init(e2, f[i].vertex[0][f[i].n-1] - f[i].vertex[0][0],
+                     f[i].vertex[1][f[i].n-1] - f[i].vertex[1][0],
+                     f[i].vertex[2][f[i].n-1] - f[i].vertex[2][0]);
+            cross(e1, e2, fn);
+            minus(fc, pc, u);
+            if (inner(fn, u, 3) < 0) intxvec(-1., fn, fn);
+            InitV(pfn[i], fn);
+            for (int j = 0; j < f[i].n; j++)
+                plus(pvn[pvid[i][j]], fn, pvn[pvid[i][j]]);
         }
-        a = 0; b = 0; c = 0;
+        for (int m = 0; m < pvU; m++) normalize(pvn[m], 3);
+        pvx0 = pvx1 = pvL[0][0]; pvy0 = pvy1 = pvL[0][1]; pvz0 = pvL[0][2];
+        for (int m = 1; m < pvU; m++) {
+            if (pvL[m][0] < pvx0) pvx0 = pvL[m][0];
+            if (pvL[m][0] > pvx1) pvx1 = pvL[m][0];
+            if (pvL[m][1] < pvy0) pvy0 = pvL[m][1];
+            if (pvL[m][1] > pvy1) pvy1 = pvL[m][1];
+            if (pvL[m][2] < pvz0) pvz0 = pvL[m][2];
+        }
+        pve = renderEpoch;
     }
+    if (!FB_Begin(BLACK)) return;
+    if(gridEnabled) DrawFloorGrid(&ax, pvx0, pvx1, pvy0, pvy1, pvz0 - 0.4);
+    ShadeCtx sc;
+    double tri[3][3];
+    float at[3][FB_NA];
+    for (int i = 0; i < n; i++) {
+        Init(sc.res, cameraPos*view[0] - f[i].vertex[0][0] + centre[0],
+                     cameraPos*view[1] - f[i].vertex[1][0] + centre[1],
+                     cameraPos*view[2] - f[i].vertex[2][0] + centre[2]);
+        normalize(sc.res, 3);
+        if (inner(sc.res, pfn[i], 3) < 0) continue; // backface
+        for (int j = 1; j + 1 < f[i].n; j++) {
+            int jj[3] = {0, j, j + 1};
+            for (int t = 0; t < 3; t++) {
+                int q = jj[t];
+                Init(tri[t], f[i].vertex[0][q], f[i].vertex[1][q], f[i].vertex[2][q]);
+                at[t][0] = pvn[pvid[i][q]][0]; at[t][1] = pvn[pvid[i][q]][1]; at[t][2] = pvn[pvid[i][q]][2];
+                at[t][3] = cameraPos*view[0] - tri[t][0] + centre[0];
+                at[t][4] = cameraPos*view[1] - tri[t][1] + centre[1];
+                at[t][5] = cameraPos*view[2] - tri[t][2] + centre[2];
+            }
+            rasterTriA(tri, at, phongEnabled ? 6 : 0, shadePhong, &sc, flatShade(tri, &sc));
+        }
+    }
+    drawAxisSegs(ax);
     FB_Flush();
 }
     

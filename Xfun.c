@@ -3,6 +3,9 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <time.h>
+#include <pthread.h>
+#include <unistd.h>
 #include <sys/select.h>
 
 #include <X11/Xlib.h>
@@ -123,7 +126,8 @@ int renderEpoch = 0;
 int interactive = 0;
 int refineEnabled = 1;
 int phongEnabled = 1;
-#define FB_MAXATTR 4
+int gridEnabled = 1;
+#define FB_MAXATTR 8
 static XImage *fbImg = NULL;
 static uint32_t *fbPix = NULL;
 static float *fbZ = NULL;
@@ -259,6 +263,18 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
       }
 
       if (redraw) {
+          // Frame-rate cap: during input floods, skip redraws more frequent
+          // than ~30fps. The idle-wait path below still emits the final frame
+          // once the burst quiets down.
+          struct timespec now;
+          clock_gettime (CLOCK_MONOTONIC, &now);
+          static struct timespec lastDraw;
+          long elapsed = (now.tv_sec - lastDraw.tv_sec)*1000 +
+                         (now.tv_nsec - lastDraw.tv_nsec)/1000000;
+          if (elapsed < 33 && XPending (prDisplay) > 0) redraw = 0;
+          else clock_gettime (CLOCK_MONOTONIC, &lastDraw);
+      }
+      if (redraw) {
           if (hadInput && refineEnabled) {
               // Mid-interaction: render a coarse frame, then wait briefly —
               // if no new input arrives within 40ms the burst has ended and
@@ -364,8 +380,35 @@ static int fbEnsure (void) {
   return 1;
 }
 
+// Draw commands are recorded during FB_Begin..FB_Flush and replayed
+// across per-row bands in worker threads at flush time.
+typedef struct {
+  int type;           // 0 flat tri, 1 attr tri, 2 seg
+  double x[3], y[3], q[3];
+  float at[3][FB_MAXATTR];
+  int na;
+  unsigned long col;
+  unsigned long (*shade) (const float *, void *);
+  unsigned char ctx[24];   // ShadeCtx snapshot (callers reuse the ctx struct per-tri)
+} FBCmd;
+#define FB_MAXTHREADS 8
+static FBCmd *fbCmds = NULL;
+static size_t fbCmdN = 0, fbCmdCap = 0;
+static int fbThreads = 0;
+
+static FBCmd *fbCmdNew (void) {
+  if (fbCmdN == fbCmdCap) {
+    fbCmdCap = fbCmdCap ? fbCmdCap*2 : 4096;
+    FBCmd *p = realloc (fbCmds, fbCmdCap*sizeof (*fbCmds));
+    if (!p) { fbCmdCap = fbCmdN = 0; return NULL; }
+    fbCmds = p;
+  }
+  return &fbCmds[fbCmdN++];
+}
+
 int FB_Begin (unsigned long bg) {
   if (!fbEnsure ()) return 0;
+  fbCmdN = 0;
   for (long i = 0; i < (long)fbW*fbH; i++) {
     fbPix[i] = (uint32_t)bg; fbZ[i] = 0.f;
   }
@@ -376,6 +419,50 @@ void FB_Tri (double ax, double ay, double aq,
 	     double bx, double by, double bq,
 	     double cx2, double cy2, double cq,
 	     unsigned long col) {
+  FBCmd *c = fbCmdNew ();
+  if (!c) return;
+  c->type = 0;
+  c->x[0] = ax; c->y[0] = ay; c->q[0] = aq;
+  c->x[1] = bx; c->y[1] = by; c->q[1] = bq;
+  c->x[2] = cx2; c->y[2] = cy2; c->q[2] = cq;
+  c->col = col;
+}
+
+void FB_TriA (double ax, double ay, double aq, const float *a0,
+	      double bx, double by, double bq, const float *a1,
+	      double cx2, double cy2, double cq, const float *a2,
+	      int na, unsigned long (*shade) (const float *, void *), void *ctx) {
+  FBCmd *c = fbCmdNew ();
+  if (!c) return;
+  c->type = 1;
+  c->x[0] = ax; c->y[0] = ay; c->q[0] = aq;
+  c->x[1] = bx; c->y[1] = by; c->q[1] = bq;
+  c->x[2] = cx2; c->y[2] = cy2; c->q[2] = cq;
+  c->na = na;
+  for (int k = 0; k < na; k++) {
+    c->at[0][k] = a0[k]; c->at[1][k] = a1[k]; c->at[2][k] = a2[k];
+  }
+  c->shade = shade;
+  memset (c->ctx, 0, sizeof c->ctx);
+  if (ctx) memcpy (c->ctx, ctx, sizeof c->ctx);
+}
+
+void FB_Seg (double ax, double ay, double aq,
+	     double bx, double by, double bq,
+	     unsigned long col) {
+  FBCmd *c = fbCmdNew ();
+  if (!c) return;
+  c->type = 2;
+  c->x[0] = ax; c->y[0] = ay; c->q[0] = aq;
+  c->x[1] = bx; c->y[1] = by; c->q[1] = bq;
+  c->col = col;
+}
+
+// Per-band raster cores: only pixels in rows [y0b, y1b] are written.
+static void fbTriRast (const FBCmd *c, int y0b, int y1b) {
+  double ax = c->x[0], ay = c->y[0], aq = c->q[0];
+  double bx = c->x[1], by = c->y[1], bq = c->q[1];
+  double cx2 = c->x[2], cy2 = c->y[2], cq = c->q[2];
   double denom = (bx - ax)*(cy2 - ay) - (cx2 - ax)*(by - ay);
   if (denom == 0) return;
   int xlo = (int)fmin (ax, fmin (bx, cx2)), xhi = (int)ceil (fmax (ax, fmax (bx, cx2)));
@@ -384,6 +471,8 @@ void FB_Tri (double ax, double ay, double aq,
   if (ylo < 0) ylo = 0;
   if (xhi >= fbW) xhi = fbW - 1;
   if (yhi >= fbH) yhi = fbH - 1;
+  if (ylo < y0b) ylo = y0b;
+  if (yhi > y1b) yhi = y1b;
   if (xlo > xhi || ylo > yhi) return;
   double inv = 1./denom;
   for (int y = ylo; y <= yhi; y++) {
@@ -397,17 +486,17 @@ void FB_Tri (double ax, double ay, double aq,
       if (w0 < 0 || w1 < 0 || w2 < 0) continue;
       float q = (float)(w0*aq + w1*bq + w2*cq);
       long idx = row + x;
-      if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)col; }
+      if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)c->col; }
     }
   }
 }
 
-// Attribute-interpolating triangle: per-pixel shade callback gets the
-// interpolated attributes and returns the pixel color.
-void FB_TriA (double ax, double ay, double aq, const float *a0,
-	      double bx, double by, double bq, const float *a1,
-	      double cx2, double cy2, double cq, const float *a2,
-	      int na, unsigned long (*shade) (const float *, void *), void *ctx) {
+static void fbTriARast (const FBCmd *c, int y0b, int y1b) {
+  double ax = c->x[0], ay = c->y[0], aq = c->q[0];
+  double bx = c->x[1], by = c->y[1], bq = c->q[1];
+  double cx2 = c->x[2], cy2 = c->y[2], cq = c->q[2];
+  const float *a0 = c->at[0], *a1 = c->at[1], *a2 = c->at[2];
+  int na = c->na;
   double denom = (bx - ax)*(cy2 - ay) - (cx2 - ax)*(by - ay);
   if (denom == 0) return;
   int xlo = (int)fmin (ax, fmin (bx, cx2)), xhi = (int)ceil (fmax (ax, fmax (bx, cx2)));
@@ -416,6 +505,8 @@ void FB_TriA (double ax, double ay, double aq, const float *a0,
   if (ylo < 0) ylo = 0;
   if (xhi >= fbW) xhi = fbW - 1;
   if (yhi >= fbH) yhi = fbH - 1;
+  if (ylo < y0b) ylo = y0b;
+  if (yhi > y1b) yhi = y1b;
   if (xlo > xhi || ylo > yhi) return;
   double inv = 1./denom;
   float at[FB_MAXATTR];
@@ -432,27 +523,61 @@ void FB_TriA (double ax, double ay, double aq, const float *a0,
       long idx = row + x;
       if (q <= fbZ[idx]) continue;
       for (int k = 0; k < na; k++) at[k] = w0*a0[k] + w1*a1[k] + w2*a2[k];
-      fbZ[idx] = q; fbPix[idx] = (uint32_t)shade (at, ctx);
+      fbZ[idx] = q; fbPix[idx] = (uint32_t)c->shade (at, (void *)c->ctx);
     }
   }
 }
 
-void FB_Seg (double ax, double ay, double aq,
-	     double bx, double by, double bq,
-	     unsigned long col) {
+static void fbSegRast (const FBCmd *c, int y0b, int y1b) {
+  double ax = c->x[0], ay = c->y[0], aq = c->q[0];
+  double bx = c->x[1], by = c->y[1], bq = c->q[1];
+  if (fmax (ay, by) < y0b || fmin (ay, by) > y1b) return;
   int steps = (int)fmax (fabs (bx - ax), fabs (by - ay));
   for (int i = 0; i <= steps; i++) {
     double t = steps ? (double)i/steps : 0.;
     int x = (int)(ax + (bx - ax)*t + 0.5), y = (int)(ay + (by - ay)*t + 0.5);
-    if (x < 0 || x >= fbW || y < 0 || y >= fbH) continue;
+    if (x < 0 || x >= fbW || y < y0b || y > y1b) continue;
     float q = (float)(aq + (bq - aq)*t);
     long idx = (long)y*fbW + x;
-    if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)col; }
+    if (q > fbZ[idx]) { fbZ[idx] = q; fbPix[idx] = (uint32_t)c->col; }
   }
+}
+
+static void fbBandRun (int y0b, int y1b) {
+  for (size_t i = 0; i < fbCmdN; i++) {
+    const FBCmd *c = &fbCmds[i];
+    switch (c->type) {
+      case 0: fbTriRast (c, y0b, y1b); break;
+      case 1: fbTriARast (c, y0b, y1b); break;
+      default: fbSegRast (c, y0b, y1b); break;
+    }
+  }
+}
+
+static void *fbWorker (void *arg) {
+  long b = (long)arg;
+  int y0b = (int)((long)fbH*b/fbThreads), y1b = (int)((long)fbH*(b + 1)/fbThreads) - 1;
+  fbBandRun (y0b, y1b);
+  return NULL;
 }
 
 void FB_Flush (void) {
   if (!fbImg || !fbPix) return;
+  if (fbThreads == 0) {
+    long np = sysconf (_SC_NPROCESSORS_ONLN);
+    fbThreads = np > 1 ? (np > FB_MAXTHREADS ? FB_MAXTHREADS : (int)np) : 1;
+  }
+  if (fbThreads > 1 && fbCmdN) {
+    pthread_t th[FB_MAXTHREADS];
+    for (long b = 1; b < fbThreads; b++)
+      pthread_create (&th[b], NULL, fbWorker, (void *)b);
+    fbBandRun (0, (int)((long)fbH/fbThreads) - 1);
+    for (long b = 1; b < fbThreads; b++)
+      pthread_join (th[b], NULL);
+  } else {
+    fbBandRun (0, fbH - 1);
+  }
+  fbCmdN = 0;
   if (fbImg->bits_per_pixel == 32) {
     for (int y = 0; y < fbH; y++) {
       uint32_t *dst = (uint32_t *)(fbImg->data + (long)y*fbImg->bytes_per_line);

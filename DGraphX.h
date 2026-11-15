@@ -105,6 +105,7 @@ extern int renderEpoch;
 extern int interactive;
 extern int refineEnabled;
 extern int phongEnabled;
+extern int gridEnabled;
 
 int DrawWindow (void (*DrawWindowContent) (double*,int*,double,double),
 		int (*KeyPressFunction) (int), MouseEventFunc MouseFunc, double*, int*,double,double);
@@ -122,6 +123,11 @@ void DrawArc(int ,int , unsigned int, unsigned int, int, int);
 void DrawLine(double,double,double,double);
 void DrawAxes2D();
 void DrawAxes(int *n);
+void DrawFloorGrid(int *n, double x0, double x1, double y0, double y1, double zlev);
+void DrawFloorContours(int *n, double *v, int nxv, int nyc, double dx, double dy,
+                       double a, int nlev, double vmin, double vmax, double zlev);
+void DrawSurfaceCurves(int *n, double *v, int nxv, int nyc,
+                       double dx, double dy, double a, double b, double eps);
 void DrawGrid(int mode);
 void scale(int mode, double a, double b, double lambda);
 void xshift(int mode, double valueOfShift);

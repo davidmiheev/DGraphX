@@ -768,9 +768,11 @@ static int KeyPressFunction (int nKeySym) {
                 printf("[DGraphX] Initializing 3D mode...\n");
                 variant = 0; key_1 = 0; key_2 = 0; key_3 = 0; key_4 = 0;
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
-                key_8 = 0; key_9 = 0;
+                key_8 = 1; key_9 = 0;
                 xc = yc = INIT_SCALE;
+                xmin = xmax = ymin = ymax = 0;
                 InitialPosition();
+                InitKey();
                 count = 1;
                 SetSize();
             }
@@ -780,6 +782,7 @@ static int KeyPressFunction (int nKeySym) {
                 key_5 = 0; key_6 = 0; key_7 = 3; mode = 1; count = 0; count1 = 0;
                 key_8 = 0; key_9 = 0;
                 xc = yc = INIT_SCALE;
+                xmin = xmax = ymin = ymax = 0;
                 SetSize();
             }
             break;
@@ -794,6 +797,11 @@ static int KeyPressFunction (int nKeySym) {
             else key_10 = 1;
             key_11 = 1;
             renderEpoch++;
+            break;
+        case XK_G:
+        case XK_g:
+            gridEnabled = !gridEnabled;
+            printf("[DGraphX] Floor grid %s\n", gridEnabled ? "ON" : "OFF");
             break;
         case XK_R:
         case XK_r:

@@ -21,7 +21,7 @@ OBJS            = Xfun.o DGraphX.o interpolation.o dtoa.o DX.o matrix.o tinyexpr
 all:    $(NAME)
 
 $(NAME)         : $(OBJS)
-	$(LINK) $(LDFLAGS) $(OBJS) $(LIB_DIR) $(LIB) -lm -o $(NAME)
+	$(LINK) $(LDFLAGS) $(OBJS) $(LIB_DIR) $(LIB) -lm -lpthread -o $(NAME)
 
 clean:
 	rm -f $(OBJS) $(NAME)

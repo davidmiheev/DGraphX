@@ -34,6 +34,7 @@ Important keyboard commands for the 3D mode:
 * You can also change the color method with **L** key (not **l** key)
 * **R** key toggles progressive refinement (half-resolution rendering while interacting, full resolution when idle)
 * **P** key toggles Phong shading (smooth per-pixel normals) vs flat facet shading
+* **G** key toggles the floor grid (coordinate level curves under the 3D plot)
 * To quit press **q**
 
 Mouse commands for the 3D mode:
