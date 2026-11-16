@@ -105,7 +105,7 @@ double f(double x) {
     if (!te_f) compile_functions();
     cur_x = x;
     double res = te_f ? te_eval(te_f) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double df(double x) {
@@ -117,77 +117,77 @@ double parx2D(double t) {
     if (!te_cx) compile_functions();
     cur_t = t;
     double res = te_cx ? te_eval(te_cx) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double pary2D(double t) {
     if (!te_cy) compile_functions();
     cur_t = t;
     double res = te_cy ? te_eval(te_cy) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double u(double x, double y) {
     if (!te_u) compile_functions();
     cur_x = x; cur_y = y;
     double res = te_u ? te_eval(te_u) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double w(double x, double y) {
     if (!te_w) compile_functions();
     cur_x = x; cur_y = y;
     double res = te_w ? te_eval(te_w) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double v(double x, double y) {
     if (!te_v) compile_functions();
     cur_x = x; cur_y = y;
     double res = te_v ? te_eval(te_v) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double curvex(double t) {
     if (!te_cx) compile_functions();
     cur_t = t;
     double res = te_cx ? te_eval(te_cx) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double curvey(double t) {
     if (!te_cy) compile_functions();
     cur_t = t;
     double res = te_cy ? te_eval(te_cy) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double curvez(double t) {
     if (!te_cz) compile_functions();
     cur_t = t;
     double res = te_cz ? te_eval(te_cz) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double parx(double t, double s) {
     if (!te_px) compile_functions();
     cur_t = t; cur_s = s;
     double res = te_px ? te_eval(te_px) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double pary(double t, double s) {
     if (!te_py) compile_functions();
     cur_t = t; cur_s = s;
     double res = te_py ? te_eval(te_py) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 double parz(double t, double s) {
     if (!te_pz) compile_functions();
     cur_t = t; cur_s = s;
     double res = te_pz ? te_eval(te_pz) : 0;
-    return !isfinite(res) ? 0 : res;
+    return res; // propagate NaN: undefined-domain samples are skipped by the draw checks
 }
 
 // Mouse interaction state
@@ -365,8 +365,10 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             DrawPoint(invmap(a,0).x, invmap(a,0).y, 3);
             if(key_5 == 1&&x[0] < xmax) { SetLineStyle(DASH);
                 DrawPoint(invmap(x[0],0).x, invmap(x[0],0).y,3);
-                DrawPoint(invmap(x[0],f(x[0])).x, invmap(x[0],f(x[0])).y,3);
-                DrawLine (x[0],0,x[0],f(x[0]));
+                if(isfinite(f(x[0]))) {
+                    DrawPoint(invmap(x[0],f(x[0])).x, invmap(x[0],f(x[0])).y,3);
+                    DrawLine (x[0],0,x[0],f(x[0]));
+                }
                 SetLineStyle(SOLID);
             }
         }
@@ -375,8 +377,10 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             DrawPoint(invmap(b, 0).x, invmap(b, 0).y, 3);
             if(key_5 == 1 && x[*n - 1] > xmin) { SetLineStyle(DASH);
                 DrawPoint(invmap(x[*n - 1], 0).x, invmap(x[*n - 1], 0).y, 3);
-                DrawPoint(invmap(x[*n - 1], f(x[*n - 1])).x, invmap(x[*n - 1], f(x[*n - 1])).y, 3);
-                DrawLine (x[*n - 1], 0, x[*n - 1], f(x[*n - 1]));
+                if(isfinite(f(x[*n - 1]))) {
+                    DrawPoint(invmap(x[*n - 1], f(x[*n - 1])).x, invmap(x[*n - 1], f(x[*n - 1])).y, 3);
+                    DrawLine (x[*n - 1], 0, x[*n - 1], f(x[*n - 1]));
+                }
                 SetLineStyle(SOLID);
             }
         } dtoa(a,s,2); dtoa(b,str,2);
@@ -388,8 +392,10 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     DrawLine (x[i], stp/2, x[i], -stp/2);
                     SetLineStyle(DASH);
                     DrawPoint(invmap(x[i], 0).x, invmap(x[i], 0).y, 3);
-                    DrawPoint(invmap(x[i], f(x[i])).x, invmap(x[i], f(x[i])).y, 3);
-                    DrawLine(x[i], 0, x[i], f(x[i]));
+                    if(isfinite(f(x[i]))) {
+                        DrawPoint(invmap(x[i], f(x[i])).x, invmap(x[i], f(x[i])).y, 3);
+                        DrawLine(x[i], 0, x[i], f(x[i]));
+                    }
                     SetLineStyle(SOLID);
                 }
             }
@@ -453,7 +459,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
             WDrawString("' 3 ' -- draw 3D parametric surface (x(t,s), y(t,s), z(t,s)); ' 4 ' -- draw polytope (from data.txt)", 100, 575);
             WDrawString("' i ' -- enter new function expression in terminal", 100, 600);
         } else {
-            if(key_2 != 0) { ChangeCameraPosition(key_2 * -0.5); key_2 = 0; }
+            if(key_2 != 0) { ChangeCameraPosition(key_2 * 0.5); key_2 = 0; }
             if(key_3 != 0) {
                 switch (key_7) {
                     case 1: RotateX(key_3); break;
@@ -506,6 +512,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     }
                     fclose(fi); key_11 = 0;
                     if (bad) { printf("[DGraphX]: bad data.txt format\n"); nFaces = 0; variant = 0; break; }
+                    renderEpoch++;
                     } DrawPolytope(faces, nFaces);
                     break;
                 case 5:
