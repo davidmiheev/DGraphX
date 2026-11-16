@@ -965,8 +965,15 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
 
 static void tubeTangent(double (*curvefun[]) (double), double t, double ftol, double P[3], double T[3]) {
     Init(P, curvefun[0](t), curvefun[1](t), curvefun[2](t));
-    Init(T, curvefun[0](t+ftol) - curvefun[0](t-ftol), curvefun[1](t+ftol) - curvefun[1](t-ftol), curvefun[2](t+ftol) - curvefun[2](t-ftol));
-    if(inner(T, T, 3) < 1e-18) Init(T, 1., 0., 0.);
+    double d[3];
+    for (int k = 0; k < 3; k++) {
+        double fm = curvefun[k](t - ftol), fp = curvefun[k](t + ftol);
+        if (!isfinite(fm)) fm = curvefun[k](t); // domain edge: fall back to one-sided difference
+        if (!isfinite(fp)) fp = curvefun[k](t);
+        d[k] = fp - fm;
+    }
+    Init(T, d[0], d[1], d[2]);
+    if(!(inner(T, T, 3) > 1e-18)) Init(T, 1., 0., 0.); // zero or NaN tangent
     normalize(T, 3);
 }
 
@@ -980,6 +987,8 @@ static void tubeRingAt(double P[3], double n1[3], double n2[3], double r, double
 // Rotate v by the rotation taking unit tangent a to unit tangent b (Rodrigues).
 static void transportFrame(double a[3], double b[3], double v[3]) {
     double ax[3], cr[3], res[3];
+    if (!isfinite(a[0]) || !isfinite(a[1]) || !isfinite(a[2]) ||
+        !isfinite(b[0]) || !isfinite(b[1]) || !isfinite(b[2])) return; // keep last valid frame
     cross(a, b, ax);
     double s2 = inner(ax, ax, 3);
     if(s2 < 1e-18) return;
