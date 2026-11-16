@@ -142,6 +142,7 @@ void yshift(int mode, double valueOfShift) {
 }
 
 void InitCameraPosition(double pos, double focus) {
+    if (!(focus > 0.)) focus = 2.; // degenerate/NaN focus (e.g. planar plot) would collapse projection
     cameraPos = pos + focus;
     screenPos = pos;
 }
@@ -203,6 +204,7 @@ void DrawParametric2D(double (*parf[]) (double), double it, double ft) {
 
 
 void DrawLine(double x1, double y1, double x2, double y2) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2)) return;
     WDrawLine(invmap(x1,y1).x, invmap(x1,y1).y,
               invmap(x2,y2).x, invmap(x2,y2).y);
 }
@@ -870,12 +872,20 @@ void DrawGraph3DX(double a, double b, double (*f[]) (double, double), unsigned l
                     for (int ix = 0; ix < nxc; ix++)
                         gm[i*nxv*(nyc + 1) + iy*nxv + ix] = f[i](a + (ix + .5)*dx, a + (iy + .5)*dy);
         }
-        gzmin = gzmax = gv ? gv[0] : 0;
-        for (int i = 1; i < nf; i++) {
-            if (gv[i] < gzmin) gzmin = gv[i];
-            if (gv[i] > gzmax) gzmax = gv[i];
+        if(gv && gm) {
+            int first = 1;
+            for (int i = 0; i < nf; i++) {
+                if (!isfinite(gv[i])) continue;
+                if (first) { gzmin = gzmax = gv[i]; first = 0; }
+                else {
+                    if (gv[i] < gzmin) gzmin = gv[i];
+                    if (gv[i] > gzmax) gzmax = gv[i];
+                }
+            }
+            ge = renderEpoch; gn = n; gnxc = nxc; ga = a; gb = b;
+        } else {
+            gzmin = gzmax = 0.;
         }
-        ge = renderEpoch; gn = n; gnxc = nxc; ga = a; gb = b;
     }
     pallette(firstColor, secondColor, modeColor, N_COLOR);
     VectorSight();
@@ -999,6 +1009,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
     static double tx0, tx1, ty0, ty1, tz0;
     static int tre = -1;
     static double r = 0.05;
+    static double cNearY, cFarY;
     double dt = (s - it)/NT, ftol = dt*0.5;
     int ax = 0;
     SetShadingColor(BLUE);
@@ -1011,6 +1022,8 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             if(curvefun[1](t) > nearY) nearY = curvefun[1](t);
             if(curvefun[1](t) < farY) farY = curvefun[1](t);
         }
+        if (!(nearY > farY)) { nearY = 5.; farY = -5.; }
+        cNearY = nearY; cFarY = farY;
         r = (nearY - farY)/40.;
         if(r < 0.05) r = 0.05;
         double P[3], T[3], Tp[3], ref[3], n1[3], n2[3];
@@ -1060,6 +1073,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
             }
         tre = renderEpoch;
     }
+    nearY = cNearY; farY = cFarY;
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&ax);
     if(gridEnabled) DrawFloorGrid(&ax, tx0, tx1, ty0, ty1, tz0 - 2*r);
@@ -1102,6 +1116,7 @@ void ParametricCurve3D(double (*curvefun[]) (double), double it, double s, int m
 static double pgv[(PGT + 1)*(PGS + 1)*3];
 static int pge = -1;
 static double pgx0, pgx1, pgy0, pgy1, pgz0;
+static double pgNearY, pgFarY;
 
 void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstColor, unsigned long secondColor,
                        double it, double ft, double is, double fs, int mode, int modeColor) {
@@ -1126,6 +1141,8 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
                 idx += 3;
             }
         }
+        if (!(nearY > farY)) { nearY = 5.; farY = -5.; }
+        pgNearY = nearY; pgFarY = farY;
         pgx0 = pgx1 = pgv[0]; pgy0 = pgy1 = pgv[1]; pgz0 = pgv[2];
         for (int i = 3; i < idx; i += 3) {
             if (pgv[i] < pgx0) pgx0 = pgv[i];
@@ -1136,6 +1153,7 @@ void ParametricGraph3D(double (*parfun[]) (double, double), unsigned long firstC
         }
         pge = renderEpoch;
     }
+    nearY = pgNearY; farY = pgFarY;
     if(key == 0) InitCameraPosition(nearY + 5, 2*(nearY-farY));
     if(mode) DrawAxes(&j);
     if(gridEnabled) DrawFloorGrid(&j, pgx0, pgx1, pgy0, pgy1, pgz0 - 0.4);
