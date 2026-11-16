@@ -569,11 +569,14 @@ void FB_Flush (void) {
   }
   if (fbThreads > 1 && fbCmdN) {
     pthread_t th[FB_MAXTHREADS];
+    int spawned[FB_MAXTHREADS] = {0};
     for (long b = 1; b < fbThreads; b++)
-      pthread_create (&th[b], NULL, fbWorker, (void *)b);
+      spawned[b] = pthread_create (&th[b], NULL, fbWorker, (void *)b) == 0;
     fbBandRun (0, (int)((long)fbH/fbThreads) - 1);
-    for (long b = 1; b < fbThreads; b++)
-      pthread_join (th[b], NULL);
+    for (long b = 1; b < fbThreads; b++) {
+      if (spawned[b]) pthread_join (th[b], NULL);
+      else fbBandRun ((int)((long)fbH*b/fbThreads), (int)((long)fbH*(b + 1)/fbThreads) - 1);
+    }
   } else {
     fbBandRun (0, fbH - 1);
   }
