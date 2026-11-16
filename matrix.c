@@ -13,7 +13,6 @@
 #define MAX_OUTPUT_SIZE 5
 
 static double tmp[3];
-static double t;
 
 void PrintMatrix(int n, double* A) {
     int i, j, nPrint;
@@ -104,12 +103,11 @@ int InvMatrix(int n, double* A, double* B) {
 }
 
 double inner(double *v, double* u, int n) {
-    //double res = 0.;
-    t = 0.;
+    double res = 0.;
     for (int i = 0; i < n; i++) {
-        t += v[i]*u[i];
+        res += v[i]*u[i];
     }
-    return t;
+    return res;
 }
 
 void InitV(double *v, double *u) {
@@ -169,9 +167,10 @@ void cross(double* a, double* b, double *c) {
 }
 
 void normalize(double* a, int n) {
-    t = sqrt(inner(a,a,n));
+    double len = sqrt(inner(a,a,n));
+    if (len < 1e-12) return;
     for (int i = 0; i < n; i++) {
-        a[i] /= t;
+        a[i] /= len;
     }
 }
 
