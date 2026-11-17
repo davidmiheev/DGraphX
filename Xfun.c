@@ -606,15 +606,26 @@ void FB_Flush (void) {
   XPutImage (prDisplay, draw, prGC, fbImg, 0, 0, x_0, y_0, fbW, fbH);
 }
 
-// Pixel value of a 16-bit colour channel in a TrueColor visual: keep the top
-// bits that fit the channel mask, as the X server does for XAllocColor.
-static unsigned long TrueColorChannel (unsigned short c, unsigned long mask) {
+// Pixel value of a 16-bit colour channel in a TrueColor visual, chosen the
+// way the X server's XAllocColor does: reduce the value to the visual's
+// bits_per_rgb, then take the nearest channel level, where level k stands
+// for (k*65535/lim) reduced the same way; ties go to the lower level.
+// Checked against XAllocColor on all 65536 levels at depths 15, 16, 24, 30.
+static unsigned long TrueColorChannel (unsigned short c, unsigned long mask, int bitsPerRGB) {
   int shift = 0, bits = 0;
   if (!mask) return 0;
   while (!((mask >> shift) & 1)) shift++;
   while ((mask >> (shift + bits)) & 1) bits++;
-  unsigned long v = bits >= 16 ? c : (unsigned long)(c >> (16 - bits));
-  return (v << shift) & mask;
+  if (bitsPerRGB < 1 || bitsPerRGB > 16) bitsPerRGB = 16;
+  unsigned long lim = (1ul << bits) - 1, lv = (1ul << bitsPerRGB) - 1;
+  unsigned long cv = (unsigned long)c >> (16 - bitsPerRGB);
+  unsigned long k0 = cv*lim/lv, best = 0, bestd = ~0ul;
+  for (unsigned long k = k0 ? k0 - 1 : 0; k <= k0 + 1 && k <= lim; k++) {
+    unsigned long e = (k*65535/lim) >> (16 - bitsPerRGB);
+    unsigned long d = e > cv ? e - cv : cv - e;
+    if (d < bestd) { bestd = d; best = k; }
+  }
+  return (best << shift) & mask;
 }
 
 int WGetColor (unsigned int red, unsigned int green, unsigned int blue, unsigned long *myColor) {
@@ -628,9 +639,10 @@ int WGetColor (unsigned int red, unsigned int green, unsigned int blue, unsigned
   // arithmetically, so compute the pixel locally instead of waiting for an
   // XAllocColor reply from the server for every colour.
   if (fbVisual && fbVisual->class == TrueColor) {
-    *myColor = TrueColorChannel (Color.red, fbVisual->red_mask)
-             | TrueColorChannel (Color.green, fbVisual->green_mask)
-             | TrueColorChannel (Color.blue, fbVisual->blue_mask);
+    int bpr = fbVisual->bits_per_rgb;
+    *myColor = TrueColorChannel (Color.red, fbVisual->red_mask, bpr)
+             | TrueColorChannel (Color.green, fbVisual->green_mask, bpr)
+             | TrueColorChannel (Color.blue, fbVisual->blue_mask, bpr);
     return 0;
   }
 
