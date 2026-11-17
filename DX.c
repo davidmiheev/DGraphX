@@ -281,7 +281,20 @@ void DrawLineX(Point * pts, XPoint *pt) {
 }
 //============ colors ==========
 void pallette(unsigned long firstColor, unsigned long secondColor, int modeColor, int size) {
-    unsigned long tmpx;
+    // Every draw function calls this once per frame, but the table only
+    // depends on these inputs: rebuild it only when one of them changes.
+    // (Rebuilding cost 2048 colour lookups - formerly X server round trips -
+    // per frame and was the largest cost while dragging.) cx() is written
+    // only here, so an unchanged key means the table is still valid.
+    static unsigned long kFirst, kSecond, kShading;
+    static int kMode = -1, kSize = -1;
+    if (modeColor == kMode && size == kSize && firstColor == kFirst &&
+        secondColor == kSecond && SHADINGCOLOR == kShading)
+        return;
+    kMode = modeColor; kSize = size; kFirst = firstColor;
+    kSecond = secondColor; kShading = SHADINGCOLOR;
+
+    unsigned long tmpx = BLACK;   // kept if a colour can't be allocated
     XColor fc, sc, w;
     w.pixel = WHITE; QueryColor(&w);
     if(size > N_COLOR) size = N_COLOR;
@@ -436,17 +449,30 @@ static int shadeIdx(double t, int n) {
     return i;
 }
 
+// Single-precision copy of the unit light vector for the per-pixel shader.
+// Written by VectorLight on the main thread before FB_Flush starts the
+// raster threads, which only read it.
+static float lightf[3];
+
 // Phong: interpolated normal + view dir -> normalize -> diffuse+specular lookup.
 // attr layout: [nx,ny,nz, tox,toy,toz] (to-camera vector per vertex).
+// Runs once per shaded pixel, so it is written inline in float instead of
+// calling the matrix.c helpers (which can't be inlined across files and
+// re-normalize n inside reflect). Same result as
+//   normalize(n); normalize(v); flip n to face v; r = reflect(light, n);
+//   cx(idx(n.light), idx(r.v))   with r.v = 2(n.l)(n.v) - l.v
 static unsigned long shadePhong(const float *a, void *ctx_) {
     (void)ctx_;
-    double n[3] = {a[0], a[1], a[2]}, v[3] = {a[3], a[4], a[5]}, r[3];
-    normalize(n, 3);
-    normalize(v, 3);
-    if (inner(n, v, 3) < 0) intxvec(-1., n, n);
-    reflect(light, n, r);
-    return cx(shadeIdx(inner(n, light, 3), N_COLOR),
-              shadeIdx(inner(r, v, 3), BW_COLOR));
+    float nx = a[0], ny = a[1], nz = a[2], vx = a[3], vy = a[4], vz = a[5];
+    float in = 1.f/sqrtf(nx*nx + ny*ny + nz*nz + 1e-30f);
+    float iv = 1.f/sqrtf(vx*vx + vy*vy + vz*vz + 1e-30f);
+    nx *= in; ny *= in; nz *= in;
+    vx *= iv; vy *= iv; vz *= iv;
+    float nv = nx*vx + ny*vy + nz*vz;
+    if (nv < 0) { nx = -nx; ny = -ny; nz = -nz; nv = -nv; }
+    float nl = nx*lightf[0] + ny*lightf[1] + nz*lightf[2];
+    float rv = 2.f*nl*nv - (lightf[0]*vx + lightf[1]*vy + lightf[2]*vz);
+    return cx(shadeIdx(nl, N_COLOR), shadeIdx(rv, BW_COLOR));
 }
 
 // Interpolated height -> color-ramp lookup.
@@ -719,6 +745,7 @@ void VectorLight(double x, double y, double z) {
     InitM(T, M);
     InvMatrix(3, T, N);
     MxV(N, light);
+    lightf[0] = (float)light[0]; lightf[1] = (float)light[1]; lightf[2] = (float)light[2];
 }
 
 int LineSightControlAxes(double x, double y, double z) {

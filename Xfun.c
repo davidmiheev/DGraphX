@@ -606,12 +606,33 @@ void FB_Flush (void) {
   XPutImage (prDisplay, draw, prGC, fbImg, 0, 0, x_0, y_0, fbW, fbH);
 }
 
+// Pixel value of a 16-bit colour channel in a TrueColor visual: keep the top
+// bits that fit the channel mask, as the X server does for XAllocColor.
+static unsigned long TrueColorChannel (unsigned short c, unsigned long mask) {
+  int shift = 0, bits = 0;
+  if (!mask) return 0;
+  while (!((mask >> shift) & 1)) shift++;
+  while ((mask >> (shift + bits)) & 1) bits++;
+  unsigned long v = bits >= 16 ? c : (unsigned long)(c >> (16 - bits));
+  return (v << shift) & mask;
+}
+
 int WGetColor (unsigned int red, unsigned int green, unsigned int blue, unsigned long *myColor) {
   XColor Color;
-    
+
   Color.red = red;
   Color.green = green;
   Color.blue = blue;
+
+  // TrueColor visuals (practically all modern displays) map RGB to pixels
+  // arithmetically, so compute the pixel locally instead of waiting for an
+  // XAllocColor reply from the server for every colour.
+  if (fbVisual && fbVisual->class == TrueColor) {
+    *myColor = TrueColorChannel (Color.red, fbVisual->red_mask)
+             | TrueColorChannel (Color.green, fbVisual->green_mask)
+             | TrueColorChannel (Color.blue, fbVisual->blue_mask);
+    return 0;
+  }
 
   if (XAllocColor(prDisplay, DefaultColormap (prDisplay, nScreenNum), &Color) == 0) return 1;
   *myColor = Color.pixel;
