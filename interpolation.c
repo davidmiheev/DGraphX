@@ -12,8 +12,14 @@ static double coeff;
 double shoot(int mode, double par, int n, Point *pt);
 
 
+// Right-hand side of  coeff*(-Δu) + (1 + sin(y²))*u = func  on [0,1]², built
+// from the exact solution u = sin(2πx)sin(2πy)/2 that variant 5 draws, so the
+// "error" shown for the iterative solvers (variants 6/7) is a real error and
+// shrinks as O(h²) when the grid is refined. (The potential term uses y = row
+// coordinate, matching diff(): sin((i*h)²).) The previous RHS, 20*sin(20*x*y),
+// has a different solution, which made the reported error meaningless.
 double func(double x, double y) {
-    return 20*sin(20*x*y);//10;//(coeff*8*PI*PI + 1 + sin(x*x))*sin(2*PI*x)*sin(2*PI*y)/2;//20*sin(20*x*y);
+    return (coeff*8*PI*PI + 1 + sin(y*y))*sin(2*PI*x)*sin(2*PI*y)/2;
 }
 
 double r(double y, double x) {
@@ -164,15 +170,18 @@ void RichardsonIter(double *a, int n, double min, double max, int *niter, int ma
             k++;
         }
     } k = 0;
+    // k counts individual sweeps (like SeidelGauss), so max_iter caps sweeps
+    // and *niter reports sweeps; a cycle of 5 Chebyshev parameters may be
+    // cut short by max_iter.
     while(err(a,b, 1e-10, n) && k < max_iter) {
-        for(int l = 0; l < 5; l++) {
+        for(int l = 0; l < 5 && k < max_iter; l++, k++) {
             for(int i = 1; i < n - 1; i++) {
                 for(int j = 1; j < n - 1; j++) {
-                    a[i*n + j] += c[l%5]*diff(a,b,i,j,n);
+                    a[i*n + j] += c[l]*diff(a,b,i,j,n);
                 }
             }
-        } k++;
-    } *niter = k*5;//printf("%d\n", k);
+        }
+    } *niter = k;
     /*for (int i = 0; i < n*n; i++) {
         printf("%f\n", a[i]);
     }*/

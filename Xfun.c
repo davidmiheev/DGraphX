@@ -120,7 +120,7 @@ static int nScreenNum;
 static GC prGC; // graphic context
 static Window nWnd;		
 static Drawable draw;
-static Font font;
+static void FreeFonts(void);
 static XGCValues val;
 int renderEpoch = 0;
 int interactive = 0;
@@ -167,8 +167,11 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
 
   XMapWindow (prDisplay, nWnd);
     
-    prGC = XCreateGC (prDisplay, nWnd, GCLineWidth, &val); font = val.font;
-    
+    prGC = XCreateGC (prDisplay, nWnd, GCLineWidth, &val);
+    // XCopyArea from the off-screen pixmap never needs exposure events; without
+    // this every copy queues a NoExpose that wakes the event loop for nothing.
+    XSetGraphicsExposures (prDisplay, prGC, False);
+
   if (AllocColors(prDisplay, DefaultColormap (prDisplay, nScreenNum), &rColors))
     return X11_ERR_3;
 
@@ -187,6 +190,7 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
     return X11_ERR_4;
     
   //=========== XLoop ==============
+  int coarseShown = 0, pendingRedraw = 0;
   FOREVER {
       int redraw = 0, quit = 0, ev = 0, hadInput = 0;
 
@@ -256,43 +260,47 @@ int DrawWindow (void (*DrawWindowContent) (double*, int*, double, double),
 
       if (quit) {
           XFreePixmap (prDisplay, draw);
-          XUnloadFont(prDisplay, font);
+          FreeFonts();
           XFreeGC (prDisplay, prGC);
           XCloseDisplay (prDisplay);
           return 0;
       }
 
+      // A redraw skipped by the frame-rate cap is carried to the next batch,
+      // so it is not lost when the queued events don't request one themselves.
+      redraw |= pendingRedraw;
       if (redraw) {
           // Frame-rate cap: during input floods, skip redraws more frequent
-          // than ~30fps. The idle-wait path below still emits the final frame
-          // once the burst quiets down.
+          // than ~30fps; the skipped frame is drawn after the next batch.
           struct timespec now;
           clock_gettime (CLOCK_MONOTONIC, &now);
           static struct timespec lastDraw;
           long elapsed = (now.tv_sec - lastDraw.tv_sec)*1000 +
                          (now.tv_nsec - lastDraw.tv_nsec)/1000000;
-          if (elapsed < 33 && XPending (prDisplay) > 0) redraw = 0;
-          else clock_gettime (CLOCK_MONOTONIC, &lastDraw);
+          if (elapsed < 33 && XPending (prDisplay) > 0) { redraw = 0; pendingRedraw = 1; }
+          else { clock_gettime (CLOCK_MONOTONIC, &lastDraw); pendingRedraw = 0; }
       }
       if (redraw) {
-          if (hadInput && refineEnabled) {
-              // Mid-interaction: render a coarse frame, then wait briefly —
-              // if no new input arrives within 40ms the burst has ended and
-              // we follow up with a full-resolution frame.
-              fd_set fds; struct timeval tv;
-              interactive = 1;
+          // Mid-interaction (progressive refinement): render a coarse frame.
+          interactive = hadInput && refineEnabled;
+          DrawWindowContent (x,n,a,b);
+          XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+          coarseShown = interactive;
+          interactive = 0;
+      }
+      // A coarse frame is on screen: once input has been quiet for 40ms,
+      // replace it with a full-resolution frame. This runs after every batch,
+      // including one whose events requested no redraw (e.g. the ButtonRelease
+      // that ends a drag), so a coarse frame is never left on screen.
+      // XPending also flushes the coarse frame's XCopyArea to the server.
+      if (coarseShown && !XPending (prDisplay)) {
+          fd_set fds; struct timeval tv;
+          FD_ZERO(&fds); FD_SET(ConnectionNumber (prDisplay), &fds);
+          tv.tv_sec = 0; tv.tv_usec = 40000;
+          if (select (ConnectionNumber (prDisplay) + 1, &fds, NULL, NULL, &tv) == 0) {
               DrawWindowContent (x,n,a,b);
               XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
-              interactive = 0;
-              FD_ZERO(&fds); FD_SET(ConnectionNumber (prDisplay), &fds);
-              tv.tv_sec = 0; tv.tv_usec = 40000;
-              if (select (ConnectionNumber (prDisplay) + 1, &fds, NULL, NULL, &tv) == 0) {
-                  DrawWindowContent (x,n,a,b);
-                  XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
-              }
-          } else {
-              DrawWindowContent (x,n,a,b);
-              XCopyArea (prDisplay, draw, nWnd, prGC, x_0, y_0, width, height, 0, 0);
+              coarseShown = 0;
           }
       }
     }
@@ -519,10 +527,14 @@ static void fbTriARast (const FBCmd *c, int y0b, int y1b) {
       double w1 = ((cx2 - px)*(ay - py) - (ax - px)*(cy2 - py))*inv;
       double w2 = 1. - w0 - w1;
       if (w0 < 0 || w1 < 0 || w2 < 0) continue;
-      float q = (float)(w0*aq + w1*bq + w2*cq);
+      double qd = w0*aq + w1*bq + w2*cq;
+      float q = (float)qd;
       long idx = row + x;
       if (q <= fbZ[idx]) continue;
-      for (int k = 0; k < na; k++) at[k] = w0*a0[k] + w1*a1[k] + w2*a2[k];
+      // Perspective-correct: q = 1/w is affine in screen space but the
+      // attributes are not, so interpolate a/w and divide by the interpolated 1/w.
+      double p0 = w0*aq/qd, p1 = w1*bq/qd, p2 = w2*cq/qd;
+      for (int k = 0; k < na; k++) at[k] = p0*a0[k] + p1*a1[k] + p2*a2[k];
       fbZ[idx] = q; fbPix[idx] = (uint32_t)c->shade (at, (void *)c->ctx);
     }
   }
@@ -626,20 +638,46 @@ void DrawPoint(int x, int y, int d) {
     XFillPolygon (prDisplay, draw, prGC, points, 4, Convex, CoordModeOrigin); //XFillArc(prDisplay, draw, prGC,x,y,d,d,0,360*64);
 }
 
+// Fonts are loaded once per name and cached: SetFont runs several times per
+// frame, and reloading leaked an XFontStruct (and a server font) every call.
+#define FONT_CACHE 8
+static struct { char name[128]; XFontStruct *fs; } fontCache[FONT_CACHE];
+static int fontCacheN = 0;
+
+static XFontStruct *LoadFontWithFallback(const char *name) {
+    XFontStruct *fs = XLoadQueryFont(prDisplay, name);
+    if (fs) return fs;
+    int count = 0;
+    char **names = XListFonts(prDisplay, "-adobe-*-*-*-*-*-*-*-*-*-*-*-*-*", 1, &count);
+    if (names && count > 0) fs = XLoadQueryFont(prDisplay, names[0]);
+    if (names) XFreeFontNames(names);
+    if (!fs) fs = XLoadQueryFont(prDisplay, "fixed");   // core X font, always present
+    fprintf(stderr, "[DGraphX]: font %s not found, using %s\n", name,
+            fs ? "a fallback font" : "the server default font");
+    return fs;
+}
+
 void SetFont(const char* name) {
-    XFontStruct *fs; char **defname; int count;
-    fs = XLoadQueryFont(prDisplay, name);
-    if (fs == NULL) {
-        printf("[DGraphX]: One of default fonts not found :(\n");
-        defname = XListFonts(prDisplay,"-adobe-*-*-*-*-*-*-*-*-*-*-*-*-*", 1, &count);
-        if(count == 1) {
-        font = XLoadFont(prDisplay, defname[0]);
-        XSetFont(prDisplay,prGC,font);
+    int i;
+    for (i = 0; i < fontCacheN; i++)
+        if (strcmp(fontCache[i].name, name) == 0) break;
+    if (i == fontCacheN) {
+        XFontStruct *fs = LoadFontWithFallback(name);
+        if (fontCacheN == FONT_CACHE) {   // cache full: use without caching
+            if (fs) { XSetFont(prDisplay, prGC, fs->fid); XFreeFont(prDisplay, fs); }
+            return;
         }
-    } else {
-        font = fs -> fid;
-        XSetFont(prDisplay,prGC,font);
+        snprintf(fontCache[i].name, sizeof fontCache[i].name, "%s", name);
+        fontCache[i].fs = fs;   // NULL = keep the GC's default font
+        fontCacheN++;
     }
+    if (fontCache[i].fs) XSetFont(prDisplay, prGC, fontCache[i].fs->fid);
+}
+
+static void FreeFonts(void) {
+    for (int i = 0; i < fontCacheN; i++)
+        if (fontCache[i].fs) XFreeFont(prDisplay, fontCache[i].fs);
+    fontCacheN = 0;
 }
 
 void SetLineWidth(int line_width) {

@@ -488,15 +488,15 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                 case 1:
                     SetShadingColor(GREEN);
                     fun[0] = u; fun[1] = v; fun[2] = w;
-                    DrawGraph3DX(-5, 5, fun, BLUE, GREEN, key_5, key_8, 1);
+                    if(key_6 == 0) DrawGraph3DX(-5, 5, fun, BLUE, GREEN, key_5, key_8, 1);
                     break;
                 case 2:
                     curvefun[0] = curvex; curvefun[1] = curvey; curvefun[2] = curvez;
-                    ParametricCurve3D(curvefun, 0, 10*PI, key_5);
+                    if(key_6 == 0) ParametricCurve3D(curvefun, 0, 10*PI, key_5);
                     break;
                 case 3:
                     parfun[0] = parx; parfun[1] = pary; parfun[2] = parz;
-                    ParametricGraph3D(parfun, RED, BLUE, -PI, PI, -PI, PI, key_5, key_8);
+                    if(key_6 == 0) ParametricGraph3D(parfun, RED, BLUE, -PI, PI, -PI, PI, key_5, key_8);
                     break;
                 case 4:
                     if(key_11 == 1) {
@@ -513,7 +513,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     fclose(fi); key_11 = 0;
                     if (bad) { printf("[DGraphX]: bad data.txt format\n"); nFaces = 0; variant = 0; break; }
                     renderEpoch++;
-                    } DrawPolytope(faces, nFaces);
+                    } if(key_6 == 0) DrawPolytope(faces, nFaces);
                     break;
                 case 5:
                     SetShadingColor(GREEN);
@@ -523,7 +523,7 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                             fval[i*ngrid + jj] = solution(i, jj, ngrid);
                         }
                     }
-                    DrawLinear3D(fval, ngrid, BLUE, key_5);
+                    if(key_6 == 0) DrawLinear3D(fval, ngrid, BLUE, key_5);
                     WSetColor(LIGHTGREEN);
                     itoa(ngrid,s); scat("[Solution] Size of grid: ", s, 25, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
                     WDrawString(s, 20, 20);
@@ -532,7 +532,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     SetShadingColor(BLUE);
                     SetCentre(0, 0, 0);
                     if(key_11 == 1) { init_val(); t = clock(); SeidelGauss(fval, ngrid, &niter, max_iter); t = clock() - t; key_11 = 0; }
-                    DrawLinear3D(fval, ngrid, BLUE, key_5);  WSetColor(LIGHTGREEN);
+                    if(key_6 == 0) DrawLinear3D(fval, ngrid, BLUE, key_5);
+                    WSetColor(LIGHTGREEN);
                     itoa(ngrid,s); scat("[Seidel Gauss] Size of grid: ", s, 29, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
                     WDrawString(s, 20, 20);
                     dtoa(accuracy(solution, fval, ngrid), s, 5); scat("error: ", s, 7, str); WDrawString(str, 20, 40);
@@ -543,7 +544,8 @@ static void DrawWindowContent (double* x, int* n, double a, double b) {
                     SetShadingColor(RED);
                     SetCentre(0, 0, 0);
                     if(key_11 == 1) { init_val(); t = clock(); RichardsonIter(fval, ngrid, 2, 8, &niter, max_iter); t = clock() - t; key_11 = 0; }
-                    DrawLinear3D(fval, ngrid, BLUE, key_5); WSetColor(LIGHTGREEN);
+                    if(key_6 == 0) DrawLinear3D(fval, ngrid, BLUE, key_5);
+                    WSetColor(LIGHTGREEN);
                     itoa(ngrid,s); scat("[Richardson iter] Size of grid: ", s, 32, str); scat(str,"x", strlen(str), s); itoa(ngrid, str); scat(s, str, strlen(s), s);
                     WDrawString(s, 20, 20);
                     dtoa(accuracy(solution, fval, ngrid), s, 5); scat("error: ", s, 7, str); WDrawString(str, 20, 40);
@@ -890,25 +892,19 @@ int main (void) {
     if (te_py) te_free(te_py);
     if (te_pz) te_free(te_pz);
 
+    const char *msg = NULL;
     switch (ret_code) {
-        case X11_ERR_1:
-            printf ("[DGraphX]:\t%s\n", X11_ERR_MSG_1);
-            break;
-        case X11_ERR_2:
-            printf ("[DGraphX]:\t%s\n", X11_ERR_MSG_2);
-            break;
-        case X11_ERR_3:
-            printf ("[DGraphX]:\t%s\n", X11_ERR_MSG_3);
-            break;
-        case X11_ERR_4:
-            printf ("[DGraphX]:\t%s\n", X11_ERR_MSG_4);
-            break;
-        case X11_ERR_5:
-            printf ("[DGraphX]:\t%s\n", X11_ERR_MSG_5);
-            break;
-        default:
-            break;
+        case 0:         break;
+        case X11_ERR_1: msg = X11_ERR_MSG_1; break;
+        case X11_ERR_2: msg = X11_ERR_MSG_2; break;
+        case X11_ERR_3: msg = X11_ERR_MSG_3; break;
+        case X11_ERR_4: msg = X11_ERR_MSG_4; break;
+        case X11_ERR_5: msg = X11_ERR_MSG_5; break;
+        default:        msg = X11_ERR_MSG_DEF; break;
     }
-    
-    return 0;
+    if (msg) fprintf (stderr, "[DGraphX]:\t%s\n", msg);
+
+    // Non-zero exit status when the window could not be created, so scripts
+    // and CI can tell a failed start from a normal quit.
+    return ret_code;
 }
