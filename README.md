@@ -28,6 +28,7 @@ Important keyboard commands for the 3D mode:
 * Use **<-** and **->** keys for rotation about one of the coordinate axes 
 * By default, the plot rotates about the Z axis, but you can change the axis: **X** key change to rotation about the X axis, **Y** key rotation about the Y axis, and **Z** key rotation about the Z axis. 
 * If you want to see axes, just press **Enter**
+* **Backspace** hides/shows the plot
 * Use **Up** and **Down** for changing the camera distance from the coordinate origin.
 * **C** key for zoom in, **V** key for zoom out.
 * You can also change the light source position: first press **l** key and change the position of the light source with **<-** and **->** keys, then again press **l** key
