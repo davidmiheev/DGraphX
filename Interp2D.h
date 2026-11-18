@@ -15,6 +15,6 @@ void itoa(int n, char s[]);
 void scat(const char* s, char* str, unsigned long len,char* msg);
 void solveEq(int mode, int n, Point *pt);
 double accuracy(double (*sol)(int, int, int), double* a, int n);
-void RichardsonIter(double *a, int n, double min, double max, int *niter);
-void SeidelGauss(double *a, int n, int *niter);
+void RichardsonIter(double *a, int n, double min, double max, int *niter, int max_iter);
+void SeidelGauss(double *a, int n, int *niter, int max_iter);
 void SetParameter(double par);

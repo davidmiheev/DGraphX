@@ -23,20 +23,34 @@ Run executable and enjoy:
 ```
 
 After that, you will be dealing with the GUI. The GUI is very modest, but (I hope) simple to understand.
-Important keyboard commands (program doesn't support mouse yet) for the 3D mode:
+Press **i** at any time to type a new function expression in the terminal (tinyexpr syntax, e.g. `sin(x)*x`).
+Important keyboard commands for the 3D mode:
 * Use **<-** and **->** keys for rotation about one of the coordinate axes 
 * By default, the plot rotates about the Z axis, but you can change the axis: **X** key change to rotation about the X axis, **Y** key rotation about the Y axis, and **Z** key rotation about the Z axis. 
 * If you want to see axes, just press **Enter**
+* **Backspace** hides/shows the plot
 * Use **Up** and **Down** for changing the camera distance from the coordinate origin.
 * **C** key for zoom in, **V** key for zoom out.
 * You can also change the light source position: first press **l** key and change the position of the light source with **<-** and **->** keys, then again press **l** key
 * You can also change the color method with **L** key (not **l** key)
+* **R** key toggles progressive refinement (half-resolution rendering while interacting, full resolution when idle)
+* **P** key toggles Phong shading (smooth per-pixel normals) vs flat facet shading
+* **G** key toggles the floor grid (coordinate level curves under the 3D plot)
 * To quit press **q**
 
-Important keyboard commands (program doesn't support mouse yet) for the 2D mode:
+Mouse commands for the 3D mode:
+* **Left-drag** rotates the plot
+* **Right-drag** changes the camera distance
+* **Scroll wheel** zooms in/out
+
+Important keyboard commands for the 2D mode:
 Coming soon...
+
+Mouse commands for the 2D mode:
+* **Left-drag** pans the view
+* **Right-drag** or **scroll wheel** zooms in/out around the view center
 
 ## Further Comments
 
-Sad but to choose what specific plot you want to draw, you need to correct the code of functions that you want to plot in ```DGraphX.c``` and recompile, it needs to fix. 
-Also, there is some wish to add mouse support and rewrite the program with the more modern technologies...
+Functions to plot can be changed at runtime: press **i** in the window and enter a new expression in the terminal (no recompilation needed).
+There is also some wish to rewrite the program with the more modern technologies...
