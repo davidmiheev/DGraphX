@@ -78,12 +78,18 @@ extern int x_0, y_0;
     Axis/grid/contour lines are recorded with `FB_Seg` (axis segments come from `zm[]`/`axq[]`).
   - Depth is `q = 1/w` per vertex (interpolated affinely in screen space, larger = nearer).
     Attributes are interpolated **perspective-correctly** (`a/w` divided by interpolated `1/w`).
-  - `FB_Flush` replays the recorded commands on up to 8 threads, each owning a band of rows,
-    into `fbPix` (colour) / `fbZ` (depth), then `XPutImage`s into the pixmap. Shade callbacks run
-    on worker threads: they must not touch shared mutable state (use locals; `ShadeCtx` is
-    copied into each command).
+  - Each command records the rows it can touch (`ylo`/`yhi`, conservative). `FB_Flush` bins
+    the commands into 32-row bands (`FB_BAND_ROWS`, submission order kept per band, so output
+    equals a serial replay) and up to 8 threads take bands from an atomic counter, drawing into
+    `fbPix` (colour) / `fbZ` (depth); then the frame is `XPutImage`d into the pixmap. Small
+    bands keep threads evenly loaded (one band per thread left the middle-rows thread doing
+    ~1.4-1.8x the average). Shade callbacks run on worker threads: they must not touch shared
+    mutable state (use locals; `ShadeCtx` is copied into each command).
+  - Segment pixels land on rows `(int)(y + 0.5)`: band tests for segments need a margin.
 - **Shading**: `pallette()` precomputes a 64x32 colour table indexed by diffuse (`n.light`) and
-  specular (`r.view`) terms. `shadePhong` = per-pixel normals (default, `P` toggles),
+  specular (`r.view`) terms. It is called every frame but only rebuilds when its inputs change;
+  on TrueColor visuals `WGetColor` computes pixels locally with the X server's exact rounding
+  (no `XAllocColor` round trips). `shadePhong` is inline float math (hot per-pixel path). `shadePhong` = per-pixel normals (default, `P` toggles),
   `flatShade` = per-face, `shadeHeight` = colour by height (`L` toggles colour mode).
 - **Overlays**: floor grid (`DrawFloorGrid`, `G` toggles `gridEnabled`); variant 1 also draws
   marching-squares contours on the floor and iso-curves on the surface.

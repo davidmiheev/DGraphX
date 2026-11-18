@@ -5,6 +5,7 @@
 #include <math.h>
 #include <time.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <unistd.h>
 #include <sys/select.h>
 
@@ -388,10 +389,15 @@ static int fbEnsure (void) {
   return 1;
 }
 
-// Draw commands are recorded during FB_Begin..FB_Flush and replayed
-// across per-row bands in worker threads at flush time.
+// Draw commands are recorded during FB_Begin..FB_Flush. At flush time they
+// are binned into bands of FB_BAND_ROWS rows (keeping submission order within
+// each band, so the result is identical to a serial replay) and worker
+// threads take bands from a shared counter until none are left. Small bands
+// spread the work evenly: with one band per thread, the thread owning the
+// middle rows of a plot did ~1.4-1.8x the average work while the others idled.
 typedef struct {
   int type;           // 0 flat tri, 1 attr tri, 2 seg
+  int ylo, yhi;       // rows the command can touch (conservative), for binning
   double x[3], y[3], q[3];
   float at[3][FB_MAXATTR];
   int na;
@@ -400,9 +406,24 @@ typedef struct {
   unsigned char ctx[24];   // ShadeCtx snapshot (callers reuse the ctx struct per-tri)
 } FBCmd;
 #define FB_MAXTHREADS 8
+#define FB_BAND_ROWS 32
 static FBCmd *fbCmds = NULL;
 static size_t fbCmdN = 0, fbCmdCap = 0;
 static int fbThreads = 0;
+
+// Conservative row range of a command (n = vertex count), clamped to the
+// framebuffer. Clamp in double before converting: projected coordinates can
+// be huge near the camera. Pixels land on rows (int)(y + 0.5) for segments and
+// pixel centres y + 0.5 for triangles, so a 2-row margin is always enough.
+static void fbCmdRows (FBCmd *c, int n) {
+  double mn = c->y[0], mx = c->y[0];
+  for (int k = 1; k < n; k++) { mn = fmin (mn, c->y[k]); mx = fmax (mx, c->y[k]); }
+  if (!(mn <= mx)) { c->ylo = 1; c->yhi = 0; return; }   // all NaN: draws nothing
+  mn = fmax (mn - 2., -1.); mx = fmin (mx + 2., (double)fbH);
+  c->ylo = (int)floor (mn); c->yhi = (int)ceil (mx);
+  if (c->ylo < 0) c->ylo = 0;
+  if (c->yhi > fbH - 1) c->yhi = fbH - 1;
+}
 
 static FBCmd *fbCmdNew (void) {
   if (fbCmdN == fbCmdCap) {
@@ -434,6 +455,7 @@ void FB_Tri (double ax, double ay, double aq,
   c->x[1] = bx; c->y[1] = by; c->q[1] = bq;
   c->x[2] = cx2; c->y[2] = cy2; c->q[2] = cq;
   c->col = col;
+  fbCmdRows (c, 3);
 }
 
 void FB_TriA (double ax, double ay, double aq, const float *a0,
@@ -453,6 +475,7 @@ void FB_TriA (double ax, double ay, double aq, const float *a0,
   c->shade = shade;
   memset (c->ctx, 0, sizeof c->ctx);
   if (ctx) memcpy (c->ctx, ctx, sizeof c->ctx);
+  fbCmdRows (c, 3);
 }
 
 void FB_Seg (double ax, double ay, double aq,
@@ -464,6 +487,7 @@ void FB_Seg (double ax, double ay, double aq,
   c->x[0] = ax; c->y[0] = ay; c->q[0] = aq;
   c->x[1] = bx; c->y[1] = by; c->q[1] = bq;
   c->col = col;
+  fbCmdRows (c, 2);
 }
 
 // Per-band raster cores: only pixels in rows [y0b, y1b] are written.
@@ -543,7 +567,10 @@ static void fbTriARast (const FBCmd *c, int y0b, int y1b) {
 static void fbSegRast (const FBCmd *c, int y0b, int y1b) {
   double ax = c->x[0], ay = c->y[0], aq = c->q[0];
   double bx = c->x[1], by = c->y[1], bq = c->q[1];
-  if (fmax (ay, by) < y0b || fmin (ay, by) > y1b) return;
+  // Pixels land on row (int)(y + 0.5), so a segment can reach a band even when
+  // its unrounded y-range ends just outside it; testing the raw range dropped
+  // line pixels on band edges. The per-pixel row check below is exact.
+  if (fmax (ay, by) + 2. < y0b || fmin (ay, by) - 2. > y1b) return;
   int steps = (int)fmax (fabs (bx - ax), fabs (by - ay));
   for (int i = 0; i <= steps; i++) {
     double t = steps ? (double)i/steps : 0.;
@@ -555,21 +582,69 @@ static void fbSegRast (const FBCmd *c, int y0b, int y1b) {
   }
 }
 
-static void fbBandRun (int y0b, int y1b) {
+static void fbRunCmd (const FBCmd *c, int y0b, int y1b) {
+  switch (c->type) {
+    case 0: fbTriRast (c, y0b, y1b); break;
+    case 1: fbTriARast (c, y0b, y1b); break;
+    default: fbSegRast (c, y0b, y1b); break;
+  }
+}
+
+// Bins: band b holds the indices fbBinIdx[fbBinOff[b] .. fbBinOff[b+1]-1] of
+// the commands touching rows [b*FB_BAND_ROWS, (b+1)*FB_BAND_ROWS), ascending.
+static int *fbBinIdx = NULL, *fbBinOff = NULL;
+static size_t fbBinIdxCap = 0;
+static int fbBinOffCap = 0, fbNBands = 0;
+static atomic_int fbNextBand;
+
+static int fbBinCommands (void) {
+  int nb = (fbH + FB_BAND_ROWS - 1)/FB_BAND_ROWS;
+  if (nb + 1 > fbBinOffCap) {
+    int *p = realloc (fbBinOff, (nb + 1)*sizeof (*fbBinOff));
+    if (!p) return 0;
+    fbBinOff = p; fbBinOffCap = nb + 1;
+  }
+  for (int b = 0; b <= nb; b++) fbBinOff[b] = 0;
+  size_t total = 0;
   for (size_t i = 0; i < fbCmdN; i++) {
     const FBCmd *c = &fbCmds[i];
-    switch (c->type) {
-      case 0: fbTriRast (c, y0b, y1b); break;
-      case 1: fbTriARast (c, y0b, y1b); break;
-      default: fbSegRast (c, y0b, y1b); break;
-    }
+    if (c->ylo > c->yhi) continue;
+    for (int b = c->ylo/FB_BAND_ROWS; b <= c->yhi/FB_BAND_ROWS; b++) { fbBinOff[b + 1]++; total++; }
+  }
+  for (int b = 0; b < nb; b++) fbBinOff[b + 1] += fbBinOff[b];
+  if (total > fbBinIdxCap) {
+    int *p = realloc (fbBinIdx, total*sizeof (*fbBinIdx));
+    if (!p) return 0;
+    fbBinIdx = p; fbBinIdxCap = total;
+  }
+  // Fill in submission order, using fbBinOff[b] as the write cursor of band b;
+  // afterwards each cursor has advanced to the start of band b+1, so shift back.
+  for (size_t i = 0; i < fbCmdN; i++) {
+    const FBCmd *c = &fbCmds[i];
+    if (c->ylo > c->yhi) continue;
+    for (int b = c->ylo/FB_BAND_ROWS; b <= c->yhi/FB_BAND_ROWS; b++) fbBinIdx[fbBinOff[b]++] = (int)i;
+  }
+  for (int b = nb; b > 0; b--) fbBinOff[b] = fbBinOff[b - 1];
+  fbBinOff[0] = 0;
+  fbNBands = nb;
+  return 1;
+}
+
+// Take bands from the shared counter until none are left.
+static void fbRunBands (void) {
+  for (;;) {
+    int b = atomic_fetch_add_explicit (&fbNextBand, 1, memory_order_relaxed);
+    if (b >= fbNBands) break;
+    int y0b = b*FB_BAND_ROWS, y1b = y0b + FB_BAND_ROWS - 1;
+    if (y1b > fbH - 1) y1b = fbH - 1;
+    for (int k = fbBinOff[b]; k < fbBinOff[b + 1]; k++)
+      fbRunCmd (&fbCmds[fbBinIdx[k]], y0b, y1b);
   }
 }
 
 static void *fbWorker (void *arg) {
-  long b = (long)arg;
-  int y0b = (int)((long)fbH*b/fbThreads), y1b = (int)((long)fbH*(b + 1)/fbThreads) - 1;
-  fbBandRun (y0b, y1b);
+  (void)arg;
+  fbRunBands ();
   return NULL;
 }
 
@@ -579,18 +654,20 @@ void FB_Flush (void) {
     long np = sysconf (_SC_NPROCESSORS_ONLN);
     fbThreads = np > 1 ? (np > FB_MAXTHREADS ? FB_MAXTHREADS : (int)np) : 1;
   }
-  if (fbThreads > 1 && fbCmdN) {
+  if (fbCmdN && fbBinCommands ()) {
+    atomic_store_explicit (&fbNextBand, 0, memory_order_relaxed);
     pthread_t th[FB_MAXTHREADS];
     int spawned[FB_MAXTHREADS] = {0};
-    for (long b = 1; b < fbThreads; b++)
-      spawned[b] = pthread_create (&th[b], NULL, fbWorker, (void *)b) == 0;
-    fbBandRun (0, (int)((long)fbH/fbThreads) - 1);
-    for (long b = 1; b < fbThreads; b++) {
-      if (spawned[b]) pthread_join (th[b], NULL);
-      else fbBandRun ((int)((long)fbH*b/fbThreads), (int)((long)fbH*(b + 1)/fbThreads) - 1);
-    }
+    // The calling thread takes bands too; if a helper fails to start, the
+    // others simply take its share.
+    for (int t = 1; t < fbThreads; t++)
+      spawned[t] = pthread_create (&th[t], NULL, fbWorker, NULL) == 0;
+    fbRunBands ();
+    for (int t = 1; t < fbThreads; t++)
+      if (spawned[t]) pthread_join (th[t], NULL);
   } else {
-    fbBandRun (0, fbH - 1);
+    // No memory for the bins: replay everything serially as one band.
+    for (size_t i = 0; i < fbCmdN; i++) fbRunCmd (&fbCmds[i], 0, fbH - 1);
   }
   fbCmdN = 0;
   if (fbImg->bits_per_pixel == 32) {
